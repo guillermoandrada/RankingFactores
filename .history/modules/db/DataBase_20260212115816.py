@@ -46,8 +46,10 @@ def init_db() -> tuple[Engine, Table, Table, Table, Table, Table, Table, Table]:
         metadata,
         Column("metric_id", Integer, primary_key=True, autoincrement=True),
         Column("metric_name", String, unique=True, nullable=False),
+        Column("description", String, unique=False, nullable=True),
         # Nuevo campo: lo rellenarás tú a mano después (True/False)
         Column("higher_is_better", Boolean, nullable=True),
+        Column("n/a treatment", String, nullable=True),
     )
 
     # Tabla de Sectores (sector_id, sector_name)

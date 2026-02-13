@@ -1,0 +1,11 @@
+{
+  "db_url": "sqlite:///financial_data.db",
+  "fixed_columns": [
+    "Ticker",
+    "Long Name",
+    "GICS Sector Name",
+    "GICS Industry Group Name",
+    "Market Cap (USD)"
+  ],
+  "default_input_file": "2023 Q3.xlsx"
+}
