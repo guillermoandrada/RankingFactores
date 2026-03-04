@@ -1,0 +1,108 @@
+{
+  "profiles": {
+    "Value": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "5Y Average Book to Price": 0.25,
+            "5Y Average CF to Price": 0.25,
+            "5Y Average Earnings Yield": 0.5
+          }
+        }
+      },
+      "overrides": {
+        "sector": {
+          "Financials": {
+            "patch": {
+              "nodes.Scoring.inputs": {
+                "5Y Average Book to Price": 1.0
+              }
+            }
+          }
+        },
+        "industry": {}
+      },
+      "normalization": "zscore",
+      "winsorization": {
+        "lower": 0.01,
+        "upper": 0.99
+      }
+    },
+    "Past Book to Price": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Past Book to Price": 1.0
+          }
+        }
+      },
+      "overrides": {
+        "sector": {},
+        "industry": {}
+      },
+      "normalization": "zscore",
+      "winsorization": {
+        "lower": 0.01,
+        "upper": 0.99
+      }
+    },
+    "Test": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Past Book to Price": 1.0
+          }
+        }
+      },
+      "overrides": {
+        "sector": {},
+        "industry": {}
+      },
+      "normalization": "zscore",
+      "winsorization": {
+        "lower": 0.01,
+        "upper": 0.99
+      }
+    },
+    "Normalized test": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Past Earnings Yield": 0.25,
+            "Forward Earnings Yield": 0.25,
+            "Current Earnings Yield": 0.5
+          }
+        }
+      },
+      "overrides": {
+        "sector": {},
+        "industry": {}
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.01,
+        "upper": 0.99
+      }
+    },
+    "Profitability": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current Net Margin": 0.3,
+            "Current Operating Margin": 0.3,
+            "Current ROA": 0.4
+          }
+        }
+      },
+      "overrides": {
+        "sector": {},
+        "industry": {}
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.01,
+        "upper": 0.99
+      }
+    }
+  }
+}

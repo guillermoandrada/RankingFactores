@@ -48,7 +48,7 @@ def main(
 
     print("=== Security Ranking (Analytics CLI) ===")
 
-    period = _prompt_non_empty("Period (e.g. 2024 Q4): ")
+    period = _prompt_non_empty("Period (e.g. 2024/01/01): ")
     index_name = input(
         "Index name (e.g. B500, empty = no filter): "
     ).strip() or None
@@ -110,7 +110,7 @@ def main(
     )
     df_ranked = df_scored.sort_values("score", ascending=False)
 
-    period_safe = period.replace(" ", "")
+    period_safe = period.replace(" ", "").replace("/", "-")
     index_part = (index_name or "ALL").replace(" ", "")
     filename = f"Ranking_{period_safe}_{index_part}.xlsx"
 

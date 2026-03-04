@@ -57,6 +57,16 @@ def create_tables(engine: Engine) -> None:
         Column("industry_id", Integer, ForeignKey("industries.industry_id")),
     )
 
+    # Period-scoped sector/industry: allows stocks to change classification over time
+    security_classification = Table(
+        "security_classification",
+        metadata,
+        Column("security_id", Integer, ForeignKey("securities.id"), primary_key=True),
+        Column("period", String, primary_key=True),
+        Column("sector_id", Integer, ForeignKey("sectors.sector_id")),
+        Column("industry_id", Integer, ForeignKey("industries.industry_id")),
+    )
+
     fundamentals = Table(
         "fundamental_values",
         metadata,
@@ -88,6 +98,11 @@ def create_tables(engine: Engine) -> None:
     with engine.connect() as conn:
         try:
             conn.execute(text("ALTER TABLE metrics ADD COLUMN higher_is_better BOOLEAN"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        try:
+            conn.execute(text('ALTER TABLE metrics ADD COLUMN "n/a treatment" VARCHAR'))
             conn.commit()
         except Exception:
             conn.rollback()

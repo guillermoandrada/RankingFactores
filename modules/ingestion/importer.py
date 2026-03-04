@@ -28,30 +28,41 @@ class DataImporter:
         self._reader = file_reader or FileReader()
         self._db = database or FinancialDatabase()
 
-    def import_file(self, filepath: str, verbose: bool = True) -> ImportResult:
+    def import_file(
+        self,
+        filepath: str,
+        verbose: bool = True,
+        period_override: Optional[str] = None,
+        reader: str = "bloomberg",
+        if_period_exists: str = "replace",
+    ) -> ImportResult:
         """
         Import a single file into the database.
         Returns ImportResult with counts.
+        period_override: use instead of extracting from file.
+        reader: 'bloomberg' (Bloomberg Excel format).
+        if_period_exists: 'replace' (overwrite) or 'append' (merge new metrics/securities).
         """
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"File not found: {filepath}")
 
-        index_code = self._reader.extract_index_code(filepath)
+        index_code = self._reader.extract_index_code(filepath, reader)
         if verbose:
             print(f"--> Index code detected: {index_code}")
 
-        df = self._reader.read(filepath)
+        df = self._reader.read(filepath, reader)
         if verbose:
             print(f"Read file: {filepath}")
 
         self._validate_columns(df)
 
         df = df.dropna(subset=["Ticker"])
-        period = self._reader.extract_period(filepath)
+        period = period_override or self._reader.extract_period(filepath, reader)
         if verbose:
-            print(f"--> Period detected: {period}")
+            print(f"--> Period: {period}")
 
-        result = self._db.save_fundamentals(df, period, index_code)
+        mode = "append" if if_period_exists == "append" else "replace"
+        result = self._db.save_fundamentals(df, period, index_code, mode=mode)
 
         if verbose:
             print(

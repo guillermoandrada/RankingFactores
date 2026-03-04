@@ -1,163 +1,89 @@
-"""
-Z-score calculation with winsorization.
-"""
+"""Metric matrix loading plus transform-based score preparation."""
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
-from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from modules.analytics.metric_loader import fetch_metric_matrix
+from modules.analytics.transforms import (
+    DEFAULT_TRANSFORM_CHAIN,
+    build_default_transform_registry,
+)
 from modules.config import DB_URL
+from modules.config.derived_metrics import DerivedMetricStore
 
 
 class ZScoreCalculator:
     """
-    Computes winsorized z-scores for fundamental metrics.
-    Supports filtering by index and industry.
+    Loads fundamental metric values and builds transformed metric scores.
+    Fetches base metrics from DB and computes derived metrics on the fly.
+
+    NA policy:
+    - Raw NA metric values are preserved in the database as NULL.
+    - During transformation, each transform defines how NA is handled.
+      Default zscore fills NA with column mean for score construction.
     """
 
-    def __init__(self, engine: Optional[Engine] = None) -> None:
+    def __init__(
+        self,
+        engine: Optional[Engine] = None,
+        derived_store: Optional[DerivedMetricStore] = None,
+    ) -> None:
         from sqlalchemy import create_engine
+
         self._engine = engine or create_engine(DB_URL)
+        self._derived_store = derived_store or DerivedMetricStore()
+        self._transforms = build_default_transform_registry()
 
     def compute(
         self,
         period: str,
-        metric_ids: list[int],
+        metric_names: list[str],
         index_name: Optional[str] = None,
         industry_name: Optional[str] = None,
+        sector_name: Optional[str] = None,
+        transform_chain: Optional[list[dict[str, Any]]] = None,
+        out_suffix: str = "_zscore",
     ) -> tuple[pd.DataFrame, dict[str, bool]]:
-        """
-        Compute z-scores for each security and metric.
-        Applies 1%-99% winsorization before z-scoring.
+        """Compute transformed scores (default winsor + zscore)."""
+        if not metric_names:
+            raise ValueError("metric_names cannot be empty.")
 
-        Returns:
-            df: DataFrame indexed by (security_id, ticker) with metric columns
-                and *_zscore columns.
-            direction_map: {metric_name: higher_is_better}
-        """
-        if not metric_ids:
-            raise ValueError("metric_ids cannot be empty.")
-
-        df_long = self._fetch_fundamentals(
-            period, metric_ids, index_name, industry_name
+        df_wide, direction_map = fetch_metric_matrix(
+            engine=self._engine,
+            period=period,
+            metric_names=metric_names,
+            derived_store=self._derived_store,
+            index_name=index_name,
+            industry_name=industry_name,
+            sector_name=sector_name,
         )
 
-        direction_map = self._build_direction_map(df_long)
-
-        df_wide = (
-            df_long.pivot_table(
-                index=["security_id", "ticker"],
-                columns="metric_name",
-                values="value",
-            )
-            .sort_index()
-        )
-        df_wide.columns = [str(c) for c in df_wide.columns]
-        metric_cols = df_wide.columns.tolist()
-
-        df_wins = self._winsorize(df_wide, metric_cols)
-        df_z = self._compute_zscores(df_wins, metric_cols)
-
-        return df_z, direction_map
-
-    def _fetch_fundamentals(
-        self,
-        period: str,
-        metric_ids: list[int],
-        index_name: Optional[str],
-        industry_name: Optional[str],
-    ) -> pd.DataFrame:
-        placeholders = ", ".join(f":m{i}" for i in range(len(metric_ids)))
-        joins = [
-            "JOIN securities s ON s.id = fv.security_id",
-            "JOIN metrics m ON m.metric_id = fv.metric_id",
-        ]
-        where = [
-            "fv.period = :as_of_date",
-            f"fv.metric_id IN ({placeholders})",
-        ]
-        params: dict = {"as_of_date": period}
-        params.update({f"m{i}": mid for i, mid in enumerate(metric_ids)})
-
-        # FIX: Use index_membership (singular), not index_memberships
-        if index_name:
-            joins.append(
-                "JOIN index_membership im "
-                "ON im.security_id = fv.security_id "
-                "AND im.period = :as_of_date"
-            )
-            joins.append("JOIN indices idx ON idx.index_id = im.index_id")
-            where.append("idx.name = :index_name")
-            params["index_name"] = index_name
-
-        # FIX: Use industry_id and industry_name (not id/name)
-        if industry_name:
-            joins.append(
-                "JOIN industries ind ON ind.industry_id = s.industry_id"
-            )
-            where.append("ind.industry_name = :industry_name")
-            params["industry_name"] = industry_name
-
-        sql = text(
-            f"""
-            SELECT
-                fv.security_id,
-                s.ticker,
-                fv.metric_id,
-                m.metric_name AS metric_name,
-                m.higher_is_better AS higher_is_better,
-                fv.value
-            FROM fundamental_values fv
-            {' '.join(joins)}
-            WHERE {' AND '.join(where)}
-            """
-        )
-
-        df = pd.read_sql_query(sql, con=self._engine, params=params)
-        if df.empty:
-            raise ValueError(
-                "No data found for the given period, metrics, and filters."
-            )
-        return df
-
-    def _build_direction_map(self, df: pd.DataFrame) -> dict[str, bool]:
-        rows = (
-            df[["metric_name", "higher_is_better"]]
-            .drop_duplicates(subset=["metric_name"])
-        )
-        result = {}
-        for _, row in rows.iterrows():
-            name = str(row["metric_name"])
-            hib = row["higher_is_better"]
-            result[name] = bool(hib) if hib is not None else True
-        return result
-
-    def _winsorize(
-        self, df: pd.DataFrame, cols: list[str], lower: float = 0.01, upper: float = 0.99
-    ) -> pd.DataFrame:
-        out = df.copy()
-        for col in cols:
-            s = out[col]
-            lo, hi = s.quantile(lower), s.quantile(upper)
-            out[col] = s.clip(lower=lo, upper=hi)
-        return out
-
-    def _compute_zscores(
-        self, df: pd.DataFrame, cols: list[str], suffix: str = "_zscore"
-    ) -> pd.DataFrame:
-        out = df.copy()
-        for col in cols:
-            s = out[col]
-            mean = s.mean()
-            std = s.std(ddof=0)
-            filled = s.fillna(mean)
-            if std == 0 or pd.isna(std):
-                z = pd.Series(0.0, index=out.index)
+        chain = transform_chain or DEFAULT_TRANSFORM_CHAIN
+        use_winsor = any((s.get("name") == "winsor" for s in chain))
+        result = df_wide.copy()
+        # Only transform metrics in the profile (metric_names), not composing base metrics
+        for col in metric_names:
+            if col not in result.columns:
+                continue
+            if use_winsor:
+                result[f"{col}_winsor"] = self._transforms.apply_chain(
+                    result[col], chain, stop_before=["zscore", "normalized_zscore", "percentile"]
+                )
+            result[f"{col}{out_suffix}"] = self._transforms.apply_chain(result[col], chain)
+        # Keep profile metrics and their transforms. When winsor on: _winsor + _zscore.
+        # When winsor off: raw value (for display) + _zscore, so metrics flow into the ranking table.
+        keep_cols = []
+        for col in metric_names:
+            if col not in result.columns:
+                continue
+            if use_winsor:
+                keep_cols.append(f"{col}_winsor")
             else:
-                z = (filled - mean) / std
-            out[f"{col}{suffix}"] = z
-        return out
+                keep_cols.append(col)  # raw value for display when no winsorization
+            keep_cols.append(f"{col}{out_suffix}")
+        result = result[keep_cols]
+        return result, direction_map
