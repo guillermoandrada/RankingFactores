@@ -1,0 +1,29 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+
+.history/
+.cursor/
+
+# Environment variables
+
+# Database files
+*.db
+financial_data_cache.db
+financial_data_cache.db-shm
+financial_data_cache.db-wal

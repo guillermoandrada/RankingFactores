@@ -1,0 +1,5 @@
+# Database files
+*.db
+financial_data_cache.db
+financial_data_cache.db-shm
+financial_data_cache.db-wal
