@@ -63,7 +63,13 @@ class ZScoreCalculator:
         )
 
         chain = transform_chain or DEFAULT_TRANSFORM_CHAIN
-        use_winsor = any((s.get("name") == "winsor" for s in chain))
+        # Treat both quantile winsor ("winsor") and semi-winsor ("semi_winsor")
+        # as winsorization steps for preview/output purposes.
+        winsor_names = {"winsor", "semi_winsor"}
+        use_winsor = any(
+            str(s.get("name", "")).strip() in winsor_names
+            for s in chain
+        )
         result = df_wide.copy()
         # Only transform metrics in the profile (metric_names), not composing base metrics
         for col in metric_names:

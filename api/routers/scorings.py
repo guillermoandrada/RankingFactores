@@ -2,47 +2,17 @@
 
 from __future__ import annotations
 
-import io
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+
 from api.dependencies import get_db
-from api.services.ranking_service import compute_ranking
+from api.schemas.scorings import BatchScoringBody, ComputePeriodScoringBody, ScopeItem
+from api.services.ranking_service import compute_ranking, export_ranking_to_xlsx
 
 router = APIRouter(prefix="/scorings", tags=["scorings"])
-
-
-class ScopeItem(BaseModel):
-    """Single scope for batch: sector and/or industry."""
-
-    sector: str = ""
-    industry: str = ""
-
-
-class BatchScoringBody(BaseModel):
-    """Body for POST /scorings/{period}/batch - compute multiple rankings in parallel."""
-
-    scoring_profile: str = Field(..., description="Scoring profile to run.")
-    scopes: list[ScopeItem] = Field(
-        ...,
-        description="List of sector/industry pairs. Empty sector and industry = full universe.",
-    )
-
-
-class ComputePeriodScoringBody(BaseModel):
-    """Body for POST /scorings/{period} - compute period scoring."""
-
-    scoring_profile: str = Field(..., description="Scoring profile to run.")
-    industry: str = Field(default="", description="Industry filter; empty means all.")
-    sector: str = Field(default="", description="Sector filter; empty means all.")
-    export: bool = Field(
-        default=False,
-        description="If true, return XLSX file instead of JSON.",
-    )
 
 
 @router.post("/{period:path}/batch")
@@ -54,18 +24,20 @@ async def compute_period_scoring_batch(period: str, request: BatchScoringBody):
 
     def _run_one(scope_item: ScopeItem, scope_key: str) -> tuple[str, dict]:
         try:
+            profile_name = scope_item.scoring_profile or request.scoring_profile
             df_ranked = compute_ranking(
                 quarter=period,
+                index=request.index,
                 industry=scope_item.industry or "",
                 sector=scope_item.sector or "",
-                scoring_profile=request.scoring_profile,
+                scoring_profile=profile_name,
             )
             records = json.loads(df_ranked.to_json(orient="records", date_format="iso"))
             return scope_key, {
                 "period": period,
                 "industry": scope_item.industry.strip() or None,
                 "sector": scope_item.sector.strip() or None,
-                "scoring_profile": request.scoring_profile,
+                "scoring_profile": profile_name,
                 "count": len(records),
                 "ranking": records,
             }
@@ -100,6 +72,7 @@ async def compute_period_scoring(period: str, request: ComputePeriodScoringBody)
             quarter=period,
             industry=request.industry,
             sector=request.sector,
+            index=request.index,
             scoring_profile=request.scoring_profile,
         )
         records = json.loads(
@@ -107,16 +80,10 @@ async def compute_period_scoring(period: str, request: ComputePeriodScoringBody)
         )
 
         if request.export:
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-                df_ranked.to_excel(writer, index=False, sheet_name="Ranking")
-            buffer.seek(0)
-            period_safe = period.replace(" ", "").replace("/", "-")
             scope = request.industry.strip() or request.sector.strip() or "ALL"
-            scope_safe = scope.replace(" ", "_")
-            filename = f"Ranking_{period_safe}_{scope_safe}.xlsx"
+            content, filename = export_ranking_to_xlsx(df_ranked, period, scope)
             return Response(
-                content=buffer.getvalue(),
+                content=content,
                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 headers={"Content-Disposition": f"attachment; filename={filename}"},
             )

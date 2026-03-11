@@ -7,36 +7,96 @@ import streamlit as st
 TOP_NODE_NAME = "Scoring"
 
 
+# Terminal transform: (display label, API value)
+_TERMINAL_OPTIONS = [
+    ("Standardize (z-score)", "zscore"),
+    ("Normalized z-score", "normalized_zscore"),
+    ("Percentile rank", "percentile"),
+]
+
+
 def render_transforms(key_prefix: str, title: str = "Transform Chain") -> list[dict[str, Any]]:
     st.subheader(title)
-    use_winsor = st.checkbox("Use winsor transform", value=True, key=f"{key_prefix}_use_winsor")
-    lower = st.number_input(
-        "Winsor lower quantile",
-        min_value=0.0,
-        max_value=0.49,
-        value=0.01,
-        step=0.01,
-        key=f"{key_prefix}_winsor_lower",
+    use_winsor = st.checkbox(
+        "Use winsorization",
+        value=True,
+        key=f"{key_prefix}_use_winsor",
+        help="Clamp extreme values before normalization using either quantiles or mean±k·σ.",
     )
-    upper = st.number_input(
-        "Winsor upper quantile",
-        min_value=0.51,
-        max_value=1.0,
-        value=0.99,
-        step=0.01,
-        key=f"{key_prefix}_winsor_upper",
-    )
-    terminal = st.selectbox(
+
+    winsor_mode = "quantile"
+    lower, upper, k = 0.01, 0.99, 3.0
+    if use_winsor:
+        mode_labels = ["Quantile winsorization (percentiles)", "Semi winsorization (mean ± k·σ)"]
+        mode_values = ["quantile", "semi"]
+        mode_choice = st.radio(
+            "Winsorization method",
+            options=mode_labels,
+            key=f"{key_prefix}_winsor_mode",
+        )
+        winsor_mode = mode_values[mode_labels.index(mode_choice)]
+
+        if winsor_mode == "quantile":
+            lower_col, upper_col = st.columns(2)
+            with lower_col:
+                lower = st.number_input(
+                    "Winsor lower quantile",
+                    min_value=0.0,
+                    max_value=0.49,
+                    value=0.01,
+                    step=0.01,
+                    key=f"{key_prefix}_winsor_lower",
+                    help="Lower percentile below which values are replaced (e.g. 0.01 = 1st percentile).",
+                )
+            with upper_col:
+                upper = st.number_input(
+                    "Winsor upper quantile",
+                    min_value=0.51,
+                    max_value=1.0,
+                    value=0.99,
+                    step=0.01,
+                    key=f"{key_prefix}_winsor_upper",
+                    help="Upper percentile above which values are replaced (e.g. 0.99 = 99th percentile).",
+                )
+        else:
+            k = st.number_input(
+                "k (std dev multiplier)",
+                min_value=0.1,
+                max_value=10.0,
+                value=3.0,
+                step=0.1,
+                key=f"{key_prefix}_semiwinsor_k",
+                help="Values outside mean ± k·σ are clipped to the boundary.",
+            )
+
+    st.divider()
+    terminal_labels = [x[0] for x in _TERMINAL_OPTIONS]
+    terminal_values = [x[1] for x in _TERMINAL_OPTIONS]
+    terminal_choice = st.selectbox(
         "Terminal transform",
-        ["zscore", "normalized_zscore", "percentile"],
+        options=terminal_labels,
         index=0,
         key=f"{key_prefix}_terminal_transform",
+        help="Final normalization: z-score (standardize), percentile (rank), or normalized z-score.",
     )
+    terminal = terminal_values[terminal_labels.index(terminal_choice)]
 
     chain: list[dict[str, Any]] = []
     if use_winsor:
-        chain.append({"name": "winsor", "params": {"lower": float(lower), "upper": float(upper)}})
+        if winsor_mode == "quantile":
+            chain.append({"name": "winsor", "params": {"lower": float(lower), "upper": float(upper)}})
+        else:
+            chain.append({"name": "semi_winsor", "params": {"k": float(k)}})
     chain.append({"name": terminal, "params": {}})
+
+    summary_parts = []
+    if use_winsor:
+        if winsor_mode == "quantile":
+            summary_parts.append(f"Winsor ({lower:.2f}–{upper:.2f})")
+        else:
+            summary_parts.append(f"Semi winsor (k={k:.2f})")
+    summary_parts.append(terminal_choice)
+    st.info(f"**Transform chain:** {' → '.join(summary_parts)}")
     return chain
 
 
@@ -254,61 +314,6 @@ def build_multistage_config(
     return {"factors": factors, "layers": layers}
 
 
-def build_overrides(
-    scope_name: str,
-    metrics: list[str],
-    key_prefix: str,
-    max_depth: int = 3,
-    options: list[str] | None = None,
-) -> dict[str, Any]:
-    st.subheader(f"{scope_name.capitalize()} Overrides")
-    override_count = int(
-        st.number_input(
-            f"Number of {scope_name} override boxes",
-            min_value=0,
-            max_value=20,
-            value=0,
-            step=1,
-            key=f"{key_prefix}_{scope_name}_count",
-        )
-    )
-    overrides: dict[str, Any] = {}
-    for i in range(override_count):
-        with st.expander(f"{scope_name.capitalize()} override #{i + 1}", expanded=False):
-            if options:
-                select_options = ["— Select one —"] + sorted(options)
-                selected = st.selectbox(
-                    f"Select {scope_name}",
-                    options=select_options,
-                    index=0,
-                    key=f"{key_prefix}_{scope_name}_name_{i}",
-                )
-                target_name = "" if selected == "— Select one —" else selected.strip()
-            else:
-                target_name = st.text_input(
-                    f"{scope_name.capitalize()} name",
-                    value="",
-                    key=f"{key_prefix}_{scope_name}_name_{i}",
-                ).strip()
-            if not target_name:
-                st.info("Select or enter a target name to keep this override.")
-                continue
-
-            transforms = render_transforms(
-                key_prefix=f"{key_prefix}_{scope_name}_{i}_transforms",
-                title=f"{scope_name.capitalize()} '{target_name}' transform chain",
-            )
-            profile = build_multistage_config(
-                metrics=metrics,
-                key_prefix=f"{key_prefix}_{scope_name}_{i}_multi",
-                title=f"{scope_name.capitalize()} '{target_name}' composition",
-                max_depth=max_depth,
-            )
-            profile["metric_transforms"] = transforms
-            overrides[target_name] = profile
-    return overrides
-
-
 def _convert_factors_layers_to_nodes(
     factors: list[dict[str, Any]],
     layers: list[dict[str, Any]],
@@ -335,70 +340,51 @@ def _convert_factors_layers_to_nodes(
     return nodes
 
 
-def _override_to_patch(override: dict[str, Any]) -> dict[str, Any]:
-    """
-    Convert a single override (factors, layers) to patch format.
-    Patch keys are dot paths like "nodes.Value.inputs", values are the new inputs dict.
-    """
-    factors = override.get("factors", [])
-    layers = override.get("layers", [])
-    override_nodes = _convert_factors_layers_to_nodes(factors, layers)
-    patch: dict[str, Any] = {}
-    for node_name, node_data in override_nodes.items():
-        inputs = node_data.get("inputs")
-        if inputs is not None:
-            patch[f"nodes.{node_name}.inputs"] = dict(inputs)
-    return patch
-
-
-def _transforms_to_normalization_winsor(transforms: list[dict[str, Any]]) -> tuple[str, Any]:
-    """Extract normalization and winsorization from transform chain."""
+def _transforms_to_normalization_winsor(transforms: list[dict[str, Any]]) -> tuple[str, Any, str]:
+    """Extract normalization, winsorization, and winsor_mode from transform chain."""
     normalization = "zscore"
     winsorization: Any = False
+    winsor_mode = "quantile"
     for step in transforms:
         name = step.get("name", "")
         params = step.get("params") or {}
         if name == "winsor":
+            winsor_mode = "quantile"
             winsorization = {"lower": params.get("lower", 0.01), "upper": params.get("upper", 0.99)}
+        elif name == "semi_winsor":
+            winsor_mode = "semi"
+            winsorization = {"k": params.get("k", 3.0)}
         elif name in ("zscore", "normalized_zscore", "percentile"):
             normalization = name
-    return normalization, winsorization
+    return normalization, winsorization, winsor_mode
 
 
 def convert_wizard_to_profile(
     base: dict[str, Any],
-    overrides: dict[str, Any],
     transforms: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """
-    Convert wizard output to new profile schema (nodes, overrides, normalization, winsorization).
-    """
+    """Convert wizard output to the profile schema (nodes, normalization,
+    winsorization, winsor_mode)."""
     factors = base.get("factors", [])
     layers = base.get("layers", [])
     nodes = _convert_factors_layers_to_nodes(factors, layers)
     if not nodes:
-        return {"nodes": {}, "overrides": {"sector": {}, "industry": {}}}
+        return {
+            "nodes": {},
+            "normalization": "zscore",
+            "winsorization": {"lower": 0.01, "upper": 0.99},
+            "winsor_mode": "quantile",
+        }
 
-    sector_overrides: dict[str, Any] = {}
-    industry_overrides: dict[str, Any] = {}
-    for name, override in overrides.get("sector", {}).items():
-        if name:
-            patch = _override_to_patch(override)
-            sector_overrides[name] = {"patch": patch}
-    for name, override in overrides.get("industry", {}).items():
-        if name:
-            patch = _override_to_patch(override)
-            industry_overrides[name] = {"patch": patch}
-
-    normalization, winsorization = "zscore", {"lower": 0.01, "upper": 0.99}
+    normalization, winsorization, winsor_mode = "zscore", {"lower": 0.01, "upper": 0.99}, "quantile"
     if transforms:
-        normalization, winsorization = _transforms_to_normalization_winsor(transforms)
+        normalization, winsorization, winsor_mode = _transforms_to_normalization_winsor(transforms)
 
     return {
         "nodes": nodes,
-        "overrides": {"sector": sector_overrides, "industry": industry_overrides},
         "normalization": normalization,
         "winsorization": winsorization,
+        "winsor_mode": winsor_mode,
     }
 
 

@@ -6,7 +6,7 @@ from fastapi import APIRouter
 
 from api.dependencies import get_db, get_derived_store
 
-router = APIRouter(tags=["reference"])
+router = APIRouter(prefix="/reference", tags=["reference"])
 
 
 @router.get("/periods")
@@ -23,6 +23,12 @@ async def list_sectors():
 @router.get("/industries")
 async def list_industries():
     return {"industries": get_db().list_industries()}
+
+
+@router.get("/indices")
+async def list_indices():
+    """List all available indices."""
+    return {"indices": get_db().list_indices()}
 
 
 @router.get("/db/metrics")

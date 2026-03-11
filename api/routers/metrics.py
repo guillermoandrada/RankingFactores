@@ -6,25 +6,10 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from api.dependencies import get_derived_store
+from api.dependencies import get_derived_store, get_metrics_service
 from api.schemas.metrics import MetricPostRequest, DerivedMetricPutRequest
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
-
-
-def _list_derived_metrics() -> list[dict]:
-    """Return all derived metric formulas."""
-    formulas = get_derived_store().list_formulas()
-    return [
-        {
-            "metric_name": name,
-            "higher_is_better": f.get("higher_is_better"),
-            "na_handling": f.get("na_handling"),
-            "metric_names": f.get("metric_names", []),
-            "operations": f.get("operations", []),
-        }
-        for name, f in formulas.items()
-    ]
 
 
 @router.get("")
@@ -32,7 +17,7 @@ async def list_derived_metrics(
     metric_name: Optional[str] = Query(default=None),
 ):
     """List derived metrics. Filter by metric_name for single get."""
-    all_metrics = _list_derived_metrics()
+    all_metrics = get_metrics_service().list_derived_metrics()
     if metric_name and metric_name.strip():
         metric = next(
             (m for m in all_metrics if m.get("metric_name") == metric_name.strip()),
@@ -44,7 +29,7 @@ async def list_derived_metrics(
     return {"metrics": all_metrics}
 
 
-@router.post("")
+@router.post("", status_code=201)
 async def create_derived_metric(request: MetricPostRequest):
     """Create derived metric formula (stored in JSON, computed on the fly)."""
     if not (request.metric_names and len(request.metric_names) >= 2 and request.operations and request.new_metric_name):
@@ -96,11 +81,10 @@ async def update_derived_metric(metric_name: str, request: DerivedMetricPutReque
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.delete("/{metric_name:path}")
+@router.delete("/{metric_name:path}", status_code=204)
 async def delete_derived_metric(metric_name: str):
     """Delete derived metric formula from JSON."""
     try:
         get_derived_store().delete_formula(metric_name)
-        return {"success": True, "metric_name": metric_name}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

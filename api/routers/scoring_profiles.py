@@ -25,22 +25,36 @@ async def get_scoring_profiles(
     return {"profiles": get_profile_store().list_profiles()}
 
 
-@router.post("")
+@router.post("", status_code=201)
 async def create_scoring_profile(request: ProfileCreateRequest):
     """Create a new profile. Same as PUT but name in body."""
-    return get_profile_store().upsert_scoring_profile(
-        request.profile_name, request.profile
-    )
+    store = get_profile_store()
+    store.upsert_scoring_profile(request.profile_name, request.profile)
+    profile = store.get_profile(request.profile_name)
+    return {
+        "success": True,
+        "profile_name": request.profile_name,
+        "profile": profile,
+    }
 
 
 @router.put("/{profile_name}")
 async def upsert_scoring_profile(profile_name: str, request: ProfileUpsertRequest):
-    return get_profile_store().upsert_scoring_profile(profile_name, request.profile)
+    """Update or create a scoring profile. Returns success envelope with profile."""
+    store = get_profile_store()
+    store.upsert_scoring_profile(profile_name, request.profile)
+    profile = store.get_profile(profile_name)
+    return {
+        "success": True,
+        "profile_name": profile_name,
+        "profile": profile,
+    }
 
 
-@router.delete("/{profile_name}")
+@router.delete("/{profile_name}", status_code=204)
 async def delete_scoring_profile(profile_name: str):
+    """Delete a scoring profile."""
     try:
-        return get_profile_store().delete_scoring_profile(profile_name)
+        get_profile_store().delete_scoring_profile(profile_name)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

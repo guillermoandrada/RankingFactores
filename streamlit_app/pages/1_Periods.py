@@ -5,38 +5,28 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from frontend_streamlit.api_client import ApiError, RankingApiClient
-
+from streamlit_app.api_client import ApiError
+from streamlit_app.ui import (
+    get_api_client,
+    inject_custom_css,
+    render_page_header,
+    render_section,
+    render_sidebar_api_test,
+)
 
 st.set_page_config(page_title="Periods", layout="wide")
-st.title("Periods")
-st.caption("Create periods from Excel/CSV, view and edit content, remove securities/metrics, delete period.")
+inject_custom_css()
+render_page_header("Periods", "Create periods from Excel/CSV, view and edit content, remove securities/metrics, delete period.")
 
+client = get_api_client("periods")
+render_sidebar_api_test(client, "periods_test_api")
 
-def _client() -> RankingApiClient:
-    api_url = st.sidebar.text_input(
-        "API Base URL",
-        value="http://127.0.0.1:8000",
-        key="periods_api_url",
-    )
-    return RankingApiClient(api_url)
-
-
-client = _client()
-
-if st.sidebar.button("Test API connection", key="periods_test_api"):
-    try:
-        periods = client.list_periods()
-        st.sidebar.success(f"Connected. Periods: {len(periods)}")
-    except ApiError as exc:
-        st.sidebar.error(str(exc))
-
+st.divider()
 tabs = st.tabs(["Create", "View & Edit", "Delete"])
 
 # --- Create tab ---
 with tabs[0]:
-    st.subheader("Create period from file")
-    st.caption("Upload Bloomberg Excel (.xlsx, .xls).")
+    render_section("Create period from file", "Upload Bloomberg Excel (.xlsx, .xls).")
     file = st.file_uploader(
         "Select file",
         type=["xlsx", "xls"],
@@ -72,8 +62,7 @@ with tabs[0]:
 
 # --- View & Edit tab (merged Get + Edit) ---
 with tabs[1]:
-    st.subheader("View & Edit period")
-    st.caption("Load a period, edit values in the table, then save. Or remove a security or metric from the period.")
+    render_section("View & Edit period", "Load a period, edit values in the table, then save. Or remove a security or metric from the period.")
     try:
         periods = client.list_periods()
     except ApiError as exc:
@@ -209,9 +198,111 @@ with tabs[1]:
                     else:
                         st.error("Could not resolve metric_id.")
 
+            st.divider()
+            st.markdown("**Metric parameters (higher is better & N/A treatment)**")
+
+            db_metrics_by_name = {m["metric_name"]: m for m in db_metrics}
+            editable_metrics = [m for m in metrics if m in db_metrics_by_name]
+
+            if not editable_metrics:
+                st.info("No DB metrics with editable parameters in this period.")
+            else:
+                hib_options = [
+                    ("Keep current", "keep"),
+                    ("Higher is better", True),
+                    ("Lower is better", False),
+                    ("Unset (no preference)", None),
+                ]
+                na_options = [
+                    ("Keep current", "keep"),
+                    ("Replace with zero", "replace_with_zero"),
+                    ("Replace with high", "replace_with_high"),
+                    ("Replace with low", "replace_with_low"),
+                    ("Eliminate rows with N/A", "eliminate"),
+                    ("Unset (no special handling)", None),
+                ]
+
+                pending_updates: list[tuple[int, dict]] = []
+
+                for metric_name in sorted(editable_metrics):
+                    metric_info = db_metrics_by_name.get(metric_name, {})
+                    metric_id = metric_ids_map.get(metric_name)
+                    if not metric_id:
+                        continue
+
+                    current_hib = metric_info.get("higher_is_better")
+                    current_na = metric_info.get("na_handling")
+
+                    col_label, col_hib, col_na = st.columns([3, 2, 3])
+                    with col_label:
+                        st.markdown(f"**{metric_name}**")
+                        hib_str = (
+                            "Higher is better"
+                            if current_hib is True
+                            else "Lower is better"
+                            if current_hib is False
+                            else "Not set"
+                        )
+                        na_str = current_na or "Not set"
+                        st.caption(f"Current: {hib_str} | N/A: {na_str}")
+
+                    hib_labels = [x[0] for x in hib_options]
+                    hib_values = [x[1] for x in hib_options]
+                    na_labels = [x[0] for x in na_options]
+                    na_values = [x[1] for x in na_options]
+
+                    with col_hib:
+                        hib_choice = st.selectbox(
+                            f"Higher is better – {metric_name}",
+                            options=hib_labels,
+                            index=0,
+                            key=f"metric_param_hib_{metric_name}",
+                            help="Select how this metric should behave globally.",
+                        )
+                        hib_value = hib_values[hib_labels.index(hib_choice)]
+
+                    with col_na:
+                        na_choice = st.selectbox(
+                            f"N/A treatment – {metric_name}",
+                            options=na_labels,
+                            index=0,
+                            key=f"metric_param_na_{metric_name}",
+                            help="Select how to treat missing values for this metric globally.",
+                        )
+                        na_value = na_values[na_labels.index(na_choice)]
+
+                    update_payload: dict = {}
+                    if hib_value != "keep":
+                        update_payload["higher_is_better"] = hib_value
+                    if na_value != "keep":
+                        update_payload["na_handling"] = na_value
+
+                    if update_payload:
+                        pending_updates.append((metric_id, update_payload))
+
+                if st.button("Save metric parameters", type="secondary", key="metric_params_save_btn"):
+                    if not pending_updates:
+                        st.info("No metric parameter changes to save.")
+                    else:
+                        updated_count = 0
+                        for mid, payload in pending_updates:
+                            try:
+                                client.update_db_metric(
+                                    mid,
+                                    higher_is_better=payload.get("higher_is_better"),
+                                    na_handling=payload.get("na_handling"),
+                                )
+                                updated_count += 1
+                            except ApiError as exc:
+                                st.error(f"Failed to update metric id {mid}: {exc}")
+
+                        if updated_count:
+                            st.success(f"Updated parameters for {updated_count} metric(s).")
+                            st.rerun()
+
 # --- Delete tab ---
 with tabs[2]:
-    st.subheader("Delete period")
+    render_section("Delete period", "Remove a period and all its data.")
     try:
         periods = client.list_periods()
     except ApiError as exc:

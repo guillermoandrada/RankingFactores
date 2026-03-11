@@ -1,0 +1,80 @@
+{
+  "profiles": {
+    "Earnings Yield": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current Earnings Yield": 1.0
+          }
+        }
+      },
+      "normalization": "zscore",
+      "winsorization": {
+        "lower": 0.01,
+        "upper": 0.99
+      }
+    },
+    "Book to Price": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current Book to Price": 1.0
+          }
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.09999999999999999,
+        "upper": 0.8999999999999999
+      },
+      "winsor_mode": "quantile"
+    },
+    "Test": {
+      "nodes": {
+        "Subfactor 1": {
+          "inputs": {
+            "Current Sales Growth": 1.0
+          }
+        },
+        "Subfactor 2": {
+          "inputs": {
+            "Current EPS Growth": 1.0
+          }
+        },
+        "Subfactor 3": {
+          "inputs": {
+            "Current ROA": 1.0
+          }
+        },
+        "Subfactor 4": {
+          "inputs": {
+            "Current ROIC/WACC": 1.0
+          }
+        },
+        "Factor 1": {
+          "inputs": {
+            "Subfactor 1": 0.5,
+            "Subfactor 2": 0.5
+          }
+        },
+        "Factor 2": {
+          "inputs": {
+            "Subfactor 3": 0.5,
+            "Subfactor 4": 0.5
+          }
+        },
+        "Scoring": {
+          "inputs": {
+            "Factor 1": 0.5,
+            "Factor 2": 0.5
+          }
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "k": 3.0
+      },
+      "winsor_mode": "semi"
+    }
+  }
+}

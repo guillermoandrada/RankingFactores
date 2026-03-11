@@ -26,12 +26,17 @@ class RankingApiClient:
                 detail = response.text
             raise ApiError(f"{method} {path} failed: {response.status_code} {detail}")
 
+        if response.status_code == 204:
+            return {}
         if "application/json" in response.headers.get("content-type", ""):
-            return response.json()
+            try:
+                return response.json()
+            except Exception:
+                return {}
         return response.content
 
     def list_periods(self) -> list[str]:
-        payload = self._request("GET", "/periods")
+        payload = self._request("GET", "/reference/periods")
         return payload.get("periods", [])
 
     def get_period_content(self, period: str) -> dict[str, Any]:
@@ -78,7 +83,7 @@ class RankingApiClient:
         return response.json()
 
     def delete_period(self, period: str) -> dict[str, Any]:
-        """Fully delete a period (all fundamental values and index membership)."""
+        """Fully delete a period (all fundamental values and index membership). Returns {} on success (204)."""
         return self._request("DELETE", f"/periods/{quote(period, safe='')}")
 
     def edit_period(
@@ -105,7 +110,7 @@ class RankingApiClient:
 
     def list_metrics(self) -> list[dict[str, Any]]:
         """List all available metrics (DB + derived) for scoring profiles and metric chains."""
-        payload = self._request("GET", "/db/metrics/available")
+        payload = self._request("GET", "/reference/db/metrics/available")
         return payload.get("metrics", [])
 
     def list_derived_metrics(self) -> list[dict[str, Any]]:
@@ -115,7 +120,7 @@ class RankingApiClient:
 
     def list_db_metrics(self) -> list[dict[str, Any]]:
         """List DB metrics only (from SQL)."""
-        payload = self._request("GET", "/db/metrics")
+        payload = self._request("GET", "/reference/db/metrics")
         return payload.get("metrics", [])
 
     def get_derived_metric(self, metric_name: str) -> dict[str, Any]:
@@ -152,13 +157,38 @@ class RankingApiClient:
             json={"delete_metrics": metric_ids},
         )
 
+    def update_db_metric(
+        self,
+        metric_id: int,
+        *,
+        higher_is_better: bool | None = None,
+        na_handling: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Update DB metric parameters (higher_is_better, na_handling).
+
+        This updates the metric definition globally across all periods.
+        """
+        body: dict[str, Any] = {}
+        if higher_is_better is not None:
+            body["higher_is_better"] = higher_is_better
+        if na_handling is not None:
+            body["na_handling"] = na_handling
+        if not body:
+            raise ValueError("Provide at least one of higher_is_better or na_handling.")
+        return self._request("PUT", f"/db-metrics/{metric_id}", json=body)
+
     def list_sectors(self) -> list[str]:
-        payload = self._request("GET", "/sectors")
+        payload = self._request("GET", "/reference/sectors")
         return payload.get("sectors", [])
 
     def list_industries(self) -> list[str]:
-        payload = self._request("GET", "/industries")
+        payload = self._request("GET", "/reference/industries")
         return payload.get("industries", [])
+
+    def list_indices(self) -> list[str]:
+        payload = self._request("GET", "/reference/indices")
+        return payload.get("indices", [])
 
     def list_scoring_profiles(self) -> dict[str, Any]:
         payload = self._request("GET", "/scoring-profiles")
@@ -204,10 +234,12 @@ class RankingApiClient:
         scoring_profile: str,
         industry: str = "",
         sector: str = "",
+        index: str = "",
     ) -> dict[str, Any]:
         body = {
             "industry": industry,
             "sector": sector,
+            "index": index,
             "scoring_profile": scoring_profile,
         }
         path = f"/scorings/{quote(period, safe='')}"
@@ -218,11 +250,38 @@ class RankingApiClient:
         period: str,
         scoring_profile: str,
         scopes: list[tuple[str, str]],
+        index: str = "",
     ) -> dict[str, Any]:
-        """Run rankings for multiple sector/industry pairs in parallel. scopes: [(sector, industry), ...]."""
+        """Run rankings for multiple sector/industry pairs in parallel.
+
+        scopes: list of (sector, industry) tuples. The same scoring_profile
+        is applied to all scopes.
+        """
         body = {
             "scoring_profile": scoring_profile,
+            "index": index,
             "scopes": [{"sector": s, "industry": i} for s, i in scopes],
+        }
+        path = f"/scorings/{quote(period, safe='')}/batch"
+        return self._request("POST", path, json=body)
+
+    def run_ranking_batch_with_profiles(
+        self,
+        period: str,
+        default_scoring_profile: str,
+        scopes: list[dict[str, Any]],
+        index: str = "",
+    ) -> dict[str, Any]:
+        """Run rankings for multiple scopes, optionally overriding the
+        scoring profile per scope.
+
+        scopes: list of dicts like
+        {\"sector\": str, \"industry\": str, \"scoring_profile\": Optional[str]}.
+        """
+        body = {
+            "scoring_profile": default_scoring_profile,
+            "index": index,
+            "scopes": scopes,
         }
         path = f"/scorings/{quote(period, safe='')}/batch"
         return self._request("POST", path, json=body)
@@ -233,10 +292,12 @@ class RankingApiClient:
         scoring_profile: str,
         industry: str = "",
         sector: str = "",
+        index: str = "",
     ) -> bytes:
         body = {
             "industry": industry,
             "sector": sector,
+            "index": index,
             "scoring_profile": scoring_profile,
             "export": True,
         }

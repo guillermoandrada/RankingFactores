@@ -45,6 +45,22 @@ class WinsorTransform(BaseTransform):
         return series.clip(lower=lo, upper=hi)
 
 
+class SemiWinsorTransform(BaseTransform):
+    name = "semi_winsor"
+
+    def apply(self, series: pd.Series, **params: Any) -> pd.Series:
+        k = float(params.get("k", 3.0))
+        if k <= 0:
+            return series.copy()
+        mean = series.mean()
+        std = series.std(ddof=0)
+        if std == 0 or pd.isna(std):
+            return series.copy()
+        lower = mean - k * std
+        upper = mean + k * std
+        return series.clip(lower=lower, upper=upper)
+
+
 class ZScoreTransform(BaseTransform):
     name = "zscore"
 
@@ -132,6 +148,7 @@ def build_default_transform_registry() -> TransformRegistry:
     registry = TransformRegistry()
     registry.register(IdentityTransform())
     registry.register(WinsorTransform())
+    registry.register(SemiWinsorTransform())
     registry.register(ZScoreTransform())
     registry.register(NormalizedZScoreTransform())
     registry.register(PercentileTransform())

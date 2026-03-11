@@ -189,30 +189,54 @@ def fetch_metric_matrix(
     return df_wide, direction_map
 
 
+_DB_METRIC_CACHE: dict[int, dict[str, int]] = {}
+_BASE_NA_CACHE: dict[int, dict[str, str | None]] = {}
+
+
 def _get_db_metric_names(engine: Engine) -> dict[str, int]:
-    """Return {metric_name: metric_id} for all DB metrics."""
+    """Return {metric_name: metric_id} for all DB metrics.
+
+    Results are cached per-process per engine to avoid repeated metadata
+    lookups across ranking runs.
+    """
+    engine_id = id(engine)
+    if engine_id in _DB_METRIC_CACHE:
+        return _DB_METRIC_CACHE[engine_id]
     sql = text("SELECT metric_id, metric_name FROM metrics")
     df = pd.read_sql_query(sql, con=engine)
-    return dict(zip(df["metric_name"].astype(str), df["metric_id"]))
+    mapping = dict(zip(df["metric_name"].astype(str), df["metric_id"]))
+    _DB_METRIC_CACHE[engine_id] = mapping
+    return mapping
 
 
 def _get_base_na_handling(engine: Engine, metric_names: list[str]) -> dict[str, str | None]:
-    """Return {metric_name: na_handling} for base metrics. Only includes valid options."""
+    """Return {metric_name: na_handling} for base metrics. Only includes valid options.
+
+    Metadata is cached per engine to avoid repeated queries. The full set of
+    base metric NA treatments is loaded once, and this function returns the
+    subset relevant to ``metric_names``.
+    """
     if not metric_names:
         return {}
-    placeholders = ", ".join(f":n{i}" for i in range(len(metric_names)))
-    sql = text(
-        f'SELECT metric_name, "n/a treatment" AS na_handling '
-        f"FROM metrics WHERE metric_name IN ({placeholders})"
-    )
-    params = {f"n{i}": n for i, n in enumerate(metric_names)}
-    df = pd.read_sql_query(sql, con=engine, params=params)
+    engine_id = id(engine)
+    if engine_id not in _BASE_NA_CACHE:
+        sql = text(
+            'SELECT metric_name, "n/a treatment" AS na_handling '
+            "FROM metrics"
+        )
+        df = pd.read_sql_query(sql, con=engine)
+        cache: dict[str, str | None] = {}
+        for _, row in df.iterrows():
+            name = str(row["metric_name"])
+            val = row.get("na_handling")
+            val = str(val).strip() if val else None
+            cache[name] = val if val in NA_HANDLING_OPTIONS else None
+        _BASE_NA_CACHE[engine_id] = cache
+    cache = _BASE_NA_CACHE[engine_id]
     result: dict[str, str | None] = {}
-    for _, row in df.iterrows():
-        name = str(row["metric_name"])
-        val = row.get("na_handling")
-        val = str(val).strip() if val else None
-        result[name] = val if val in NA_HANDLING_OPTIONS else None
+    for name in metric_names:
+        if name in cache:
+            result[name] = cache[name]
     return result
 
 

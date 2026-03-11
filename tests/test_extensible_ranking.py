@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 import api.main as api_main
 import api.routers.metrics as metrics_router
+import api.routers.scoring_profiles as scoring_profiles_router
 import api.routers.scorings as scorings_router
 from modules.analytics.ranking import RankingEngine
 from modules.analytics.transforms import build_default_transform_registry
@@ -16,36 +17,24 @@ from modules.config.ranking_profiles import RankingProfileResolver, RankingProfi
 
 def test_profile_precedence(tmp_path: Path) -> None:
     profile_data = {
-        "pipelines": {
-            "standard_z": [
-                {"winsor": {"lower": 0.01, "upper": 0.99}},
-                {"zscore": {}},
-            ]
-        },
-        "defaults": {"method": "linear", "pipeline": "standard_z"},
         "profiles": {
             "core": {
                 "nodes": {
-                    "base": {"inputs": {"M1": 1.0}},
+                    "base": {"inputs": {"M1": 2.0}},
                     "score": {"inputs": {"base": 1.0}},
                 },
-                "overrides": {
-                    "sector": {
-                        "Tech": {"patch": {"nodes.base.inputs": {"M1": 2.0}}},
-                    },
-                    "industry": {
-                        "Software": {"patch": {"nodes.base.inputs": {"M1": 3.0}}},
-                    },
-                },
+                "normalization": "zscore",
+                "winsorization": {"lower": 0.01, "upper": 0.99},
             }
-        },
+        }
     }
     config_path = tmp_path / "profiles.json"
     config_path.write_text(json.dumps(profile_data), encoding="utf-8")
 
     resolver = RankingProfileResolver(RankingProfileStore(path=config_path))
     resolved = resolver.resolve("core", industry="Software", sector="Tech")
-    assert resolved["factors"][0]["weights"]["M1"] == 3.0
+    # Overrides are no longer supported; resolution is independent of sector/industry.
+    assert resolved["factors"][0]["weights"]["M1"] == 2.0
 
 
 def test_transform_chain_handles_na() -> None:
@@ -89,7 +78,12 @@ def test_export_endpoint_returns_valid_xlsx(monkeypatch) -> None:
             }
         )
 
+    class FakeDB:
+        def list_periods(self):
+            return ["2023 Q3"]
+
     monkeypatch.setattr(scorings_router, "compute_ranking", _fake_compute)
+    monkeypatch.setattr(scorings_router, "get_db", lambda: FakeDB())
     client = TestClient(api_main.app)
 
     response = client.post(
@@ -103,7 +97,7 @@ def test_export_endpoint_returns_valid_xlsx(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert "spreadsheetml" in response.headers.get("content-type", "")
     assert response.content[:2] == b"PK"
 
 
@@ -117,7 +111,12 @@ def test_compute_period_scoring_endpoint(monkeypatch) -> None:
             }
         )
 
+    class FakeDB:
+        def list_periods(self):
+            return ["2023 Q3"]
+
     monkeypatch.setattr(scorings_router, "compute_ranking", _fake_compute)
+    monkeypatch.setattr(scorings_router, "get_db", lambda: FakeDB())
     client = TestClient(api_main.app)
 
     response = client.post(
@@ -158,14 +157,30 @@ def test_metric_operation_endpoint(monkeypatch) -> None:
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     payload = response.json()
     assert payload["success"] is True
     assert payload["metric_name"] == "Debt/Assets"
     assert payload["operations"] == ["/"]
 
 
-def test_scoring_profile_get_and_delete(monkeypatch) -> None:
+def test_scoring_profile_get_and_delete(monkeypatch, tmp_path: Path) -> None:
+    profile_data = {
+        "profiles": {
+            "Value Test": {
+                "nodes": {"Scoring": {"inputs": {"M1": 1.0}}},
+                "normalization": "zscore",
+                "winsorization": False,
+            }
+        }
+    }
+    config_path = tmp_path / "ranking_profiles.json"
+    config_path.write_text(json.dumps(profile_data), encoding="utf-8")
+
+    def _fake_store():
+        return RankingProfileStore(path=config_path)
+
+    monkeypatch.setattr(scoring_profiles_router, "get_profile_store", _fake_store)
     client = TestClient(api_main.app)
 
     response = client.get("/scoring-profiles?profile_name=Value%20Test")

@@ -1,0 +1,25 @@
+/* Section spacing and polish for RankingFactores */
+.block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
+}
+
+div[data-testid="stVerticalBlock"] > div:has([data-testid="stExpander"]) {
+    margin-bottom: 1rem;
+}
+
+.stExpander {
+    border: 1px solid #374151;
+    border-radius: 6px;
+}
+
+div[data-testid="stHorizontalBlock"] {
+    margin-bottom: 0.5rem;
+}
+
+/* Workaround: collapse index column in data editor when hide_index leaves blank column */
+[data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] [style*="grid"] > div:first-of-type {
+    min-width: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+}

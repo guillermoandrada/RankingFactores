@@ -10,18 +10,6 @@ from typing import Any
 PROFILE_PATH = Path(__file__).with_name("ranking_profiles.json")
 
 
-def _apply_patch(target: dict[str, Any], patch: dict[str, Any]) -> None:
-    """Apply patch dict: keys are dot paths, values are the new values."""
-    for path_str, value in patch.items():
-        parts = path_str.split(".")
-        obj = target
-        for part in parts[:-1]:
-            if part not in obj:
-                obj[part] = {}
-            obj = obj[part]
-        obj[parts[-1]] = deepcopy(value)
-
-
 def _profile_to_transform_chain(profile: dict[str, Any]) -> list[dict[str, Any]]:
     """
     Build transform chain from profile's normalization and winsorization.
@@ -30,18 +18,56 @@ def _profile_to_transform_chain(profile: dict[str, Any]) -> list[dict[str, Any]]
     """
     chain: list[dict[str, Any]] = []
     winsor = profile.get("winsorization")
+    winsor_mode = profile.get("winsor_mode", "quantile")
     if winsor:
-        params = winsor if isinstance(winsor, dict) else {}
-        chain.append({
-            "name": "winsor",
-            "params": {
-                "lower": params.get("lower", 0.01),
-                "upper": params.get("upper", 0.99),
-            },
-        })
+        if winsor_mode == "semi":
+            params = winsor if isinstance(winsor, dict) else {}
+            k = float(params.get("k", 3.0))
+            chain.append({
+                "name": "semi_winsor",
+                "params": {
+                    "k": k,
+                },
+            })
+        else:
+            params = winsor if isinstance(winsor, dict) else {}
+            chain.append({
+                "name": "winsor",
+                "params": {
+                    "lower": params.get("lower", 0.01),
+                    "upper": params.get("upper", 0.99),
+                },
+            })
     norm = profile.get("normalization", "zscore")
     chain.append({"name": norm, "params": {}})
     return chain
+
+
+def normalize_profile(profile: dict[str, Any]) -> dict[str, Any]:
+    """Return a normalized copy of a profile dict with defaults applied.
+
+    This is the canonical place to ensure that profiles have consistent
+    fields (normalization, winsorization, winsor_mode) and no deprecated
+    keys before execution.
+    """
+    p = deepcopy(profile)
+
+    # Remove historical overrides field if still present
+    p.pop("overrides", None)
+
+    # Normalization default
+    if "normalization" not in p:
+        p["normalization"] = "zscore"
+
+    # Winsorization: keep existing values, but default to False when missing
+    if "winsorization" not in p:
+        p["winsorization"] = False
+
+    # Winsorization mode: quantile or semi (default quantile to match legacy behaviour)
+    if "winsor_mode" not in p:
+        p["winsor_mode"] = "quantile"
+
+    return p
 
 
 def _nodes_to_factors_and_layers(
@@ -100,9 +126,16 @@ def _nodes_to_factors_and_layers(
 
 def _convert_profile_to_legacy(
     profile: dict[str, Any],
-    data: dict[str, Any],
+    data: dict[str, Any],  # kept for compatibility with existing call sites
 ) -> dict[str, Any]:
-    """Convert new schema (nodes, overrides, normalization, winsorization) to legacy (factors, layers, metric_transforms)."""
+    """Convert profile schema (nodes, normalization, winsorization) to legacy
+    format (factors, layers, metric_transforms).
+
+    The legacy ranking engine expects:
+    - factors: leaf nodes where inputs are metrics only
+    - layers: composition nodes that combine factors or other layers
+    - metric_transforms: transform chain derived from normalization/winsorization.
+    """
     nodes = deepcopy(profile.get("nodes", {}))
     if not nodes:
         raise ValueError("Profile must have non-empty 'nodes'.")
@@ -172,7 +205,14 @@ class RankingProfileStore:
 
 
 class RankingProfileResolver:
-    """Resolves a scoring profile using profile-local overrides and converts to legacy format."""
+    """Resolve a scoring profile and convert it to the legacy format used by the
+    ranking engine.
+
+    The resolver ignores any historical ``overrides`` keys that might still be
+    present in stored profiles. Sector/industry–specific behavior is now modeled
+    by choosing different profiles at scoring time instead of in-profile
+    overrides.
+    """
 
     def __init__(self, store: RankingProfileStore | None = None) -> None:
         self.store = store or RankingProfileStore()
@@ -180,25 +220,16 @@ class RankingProfileResolver:
     def resolve(
         self,
         scoring_profile: str,
-        industry: str | None = None,
-        sector: str | None = None,
+        industry: str | None = None,  # kept for backwards compatibility
+        sector: str | None = None,  # kept for backwards compatibility
     ) -> dict[str, Any]:
         data = self.store.load()
         profile_block = data.get("profiles", {}).get(scoring_profile)
         if profile_block is None:
             raise ValueError(f"Scoring profile '{scoring_profile}' not found.")
 
-        resolved = deepcopy(profile_block)
-        overrides = resolved.get("overrides", {})
-
-        if sector:
-            sector_override = overrides.get("sector", {}).get(sector, {})
-            if sector_override and "patch" in sector_override:
-                _apply_patch(resolved, sector_override["patch"])
-
-        if industry:
-            industry_override = overrides.get("industry", {}).get(industry, {})
-            if industry_override and "patch" in industry_override:
-                _apply_patch(resolved, industry_override["patch"])
-
+        # Industry/sector are kept for backwards-compatible call sites, but
+        # profile resolution no longer depends on them. Selection of different
+        # profiles per sector/industry is handled at a higher level.
+        resolved = normalize_profile(profile_block)
         return _convert_profile_to_legacy(resolved, data)

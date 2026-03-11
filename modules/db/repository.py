@@ -9,7 +9,7 @@ import json
 from typing import Optional
 
 import pandas as pd
-from sqlalchemy import create_engine, select, delete, update, insert, and_, MetaData, Table
+from sqlalchemy import create_engine, select, delete, update, and_, MetaData, Table
 from sqlalchemy.engine import Engine
 
 from modules.config import DB_URL, FIXED_COLUMNS
@@ -243,6 +243,13 @@ class FinancialDatabase:
             ).fetchall()
         return [r[0] for r in rows if r[0]]
 
+    def list_indices(self) -> list[str]:
+        """Return all index names in the database."""
+        tbl = self._get_table("indices")
+        with self._engine.connect() as conn:
+            rows = conn.execute(select(tbl.c.name).order_by(tbl.c.name)).fetchall()
+        return [r[0] for r in rows if r[0]]
+
     def _na_treatment_col(self, tbl):
         return tbl.c["n/a treatment"]
 
@@ -339,7 +346,11 @@ class FinancialDatabase:
             ).first()
             if not exists:
                 raise ValueError(f"Metric with id {metric_id} not found.")
-            conn.execute(update(tbl).where(tbl.c.metric_id == metric_id).values(**updates))
+            conn.execute(
+                update(tbl)
+                .where(tbl.c.metric_id == metric_id)
+                .values(updates)
+            )
 
     def create_derived_metric(
         self,
@@ -431,7 +442,7 @@ class FinancialDatabase:
                 conn.execute(
                     update(tbl_metric)
                     .where(tbl_metric.c.metric_id == new_metric_id)
-                    .values(**updates)
+                    .values(updates)
                 )
 
             conn.execute(delete(tbl_fund).where(tbl_fund.c.metric_id == new_metric_id))

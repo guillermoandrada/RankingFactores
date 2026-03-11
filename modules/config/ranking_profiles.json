@@ -1,26 +1,12 @@
 {
   "profiles": {
-    "Value": {
+    "Earnings Yield": {
       "nodes": {
         "Scoring": {
           "inputs": {
-            "5Y Average Book to Price": 0.25,
-            "5Y Average CF to Price": 0.25,
-            "5Y Average Earnings Yield": 0.5
+            "Current Earnings Yield": 1.0
           }
         }
-      },
-      "overrides": {
-        "sector": {
-          "Financials": {
-            "patch": {
-              "nodes.Scoring.inputs": {
-                "5Y Average Book to Price": 1.0
-              }
-            }
-          }
-        },
-        "industry": {}
       },
       "normalization": "zscore",
       "winsorization": {
@@ -28,81 +14,131 @@
         "upper": 0.99
       }
     },
-    "Past Book to Price": {
+    "Book to Price": {
       "nodes": {
         "Scoring": {
           "inputs": {
-            "Past Book to Price": 1.0
+            "Current Book to Price": 1.0
           }
         }
       },
-      "overrides": {
-        "sector": {},
-        "industry": {}
-      },
-      "normalization": "zscore",
+      "normalization": "normalized_zscore",
       "winsorization": {
-        "lower": 0.01,
-        "upper": 0.99
-      }
+        "lower": 0.1,
+        "upper": 0.9
+      },
+      "winsor_mode": "quantile"
     },
     "Test": {
       "nodes": {
+        "Quality": {
+          "inputs": {
+            "Current Operating Margin": 0.5,
+            "Current ROA": 0.5
+          }
+        },
+        "Value": {
+          "inputs": {
+            "Tendencia Earnings Yield": 1.0
+          }
+        },
         "Scoring": {
           "inputs": {
-            "Past Book to Price": 1.0
+            "Quality": 0.7,
+            "Value": 0.3
           }
         }
-      },
-      "overrides": {
-        "sector": {},
-        "industry": {}
-      },
-      "normalization": "zscore",
-      "winsorization": {
-        "lower": 0.01,
-        "upper": 0.99
-      }
-    },
-    "Normalized test": {
-      "nodes": {
-        "Scoring": {
-          "inputs": {
-            "Past Earnings Yield": 0.25,
-            "Forward Earnings Yield": 0.25,
-            "Current Earnings Yield": 0.5
-          }
-        }
-      },
-      "overrides": {
-        "sector": {},
-        "industry": {}
       },
       "normalization": "normalized_zscore",
       "winsorization": {
-        "lower": 0.01,
-        "upper": 0.99
-      }
+        "k": 1.0
+      },
+      "winsor_mode": "semi"
     },
-    "Profitability": {
+    "Test 3": {
       "nodes": {
+        "Quality": {
+          "inputs": {
+            "Current Operating Margin": 0.7,
+            "Current ROA": 0.3
+          }
+        },
+        "Value": {
+          "inputs": {
+            "Tendencia Earnings Yield": 1.0
+          }
+        },
         "Scoring": {
           "inputs": {
-            "Current Net Margin": 0.3,
-            "Current Operating Margin": 0.3,
-            "Current ROA": 0.4
+            "Quality": 0.7,
+            "Value": 0.3
           }
         }
       },
-      "overrides": {
-        "sector": {},
-        "industry": {}
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "k": 3.0
+      },
+      "winsor_mode": "semi"
+    },
+    "Test 2": {
+      "nodes": {
+        "Subfactor 1": {
+          "inputs": {
+            "Current Sales Growth": 1.0
+          }
+        },
+        "Subfactor 2": {
+          "inputs": {
+            "Current Quick Ratio": 1.0
+          }
+        },
+        "Factor 1": {
+          "inputs": {
+            "Subfactor 1": 0.5,
+            "Subfactor 2": 0.5
+          }
+        },
+        "Subfactor 3": {
+          "inputs": {
+            "Current ROA": 1.0
+          }
+        },
+        "Subfactor 4": {
+          "inputs": {
+            "Current ROIC/WACC": 1.0
+          }
+        },
+        "Factor 2": {
+          "inputs": {
+            "Subfactor 3": 0.5,
+            "Subfactor 4": 0.5
+          }
+        },
+        "Scoring": {
+          "inputs": {
+            "Factor 1": 0.5,
+            "Factor 2": 0.5
+          }
+        }
       },
       "normalization": "normalized_zscore",
       "winsorization": {
-        "lower": 0.01,
-        "upper": 0.99
-      }
+        "k": 3.0
+      },
+      "winsor_mode": "semi"
+    },
+    "Operating Margin Trend": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Operating Margin Trend": 1.0
+          }
+        }
+      },
+      "normalization": "percentile",
+      "winsorization": false,
+      "winsor_mode": "quantile"
     }
   }
 }

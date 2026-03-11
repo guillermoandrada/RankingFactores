@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from api.routers.db_metrics import router as db_metrics_router
 from api.routers.metrics import router as metrics_router
 from api.routers.periods import router as periods_router
 from api.routers.scorings import router as scorings_router
@@ -17,6 +18,7 @@ app = FastAPI(
 )
 
 app.include_router(metrics_router)
+app.include_router(db_metrics_router)
 app.include_router(periods_router)
 app.include_router(scorings_router)
 app.include_router(reference_router)

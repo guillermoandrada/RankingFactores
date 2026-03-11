@@ -13,7 +13,7 @@ From project root:
 
 ```bash
 pip install -r requirements.txt
-streamlit run frontend_streamlit/app.py
+streamlit run streamlit_app/Home.py
 ```
 
 Default API URL in the UI is:

@@ -22,8 +22,9 @@ class FactorScoringService:
         *,
         period: str,
         metric_names: list[str],
-        weights: dict[str, float] | None,
-        method: str | None,
+        index: str | None,
+        weights: dict[str, float] | None,  # kept for API compatibility
+        method: str | None,  # kept for API compatibility
         industry: str | None,
         sector: str | None,
         profile: dict[str, Any],
@@ -41,6 +42,7 @@ class FactorScoringService:
 
         df_scores, direction_map = self.calculator.compute(
             period=period,
+            index_name=index,
             metric_names=metric_names,
             industry_name=industry,
             sector_name=sector,
