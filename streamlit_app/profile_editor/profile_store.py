@@ -53,7 +53,7 @@ def migrate_legacy_to_flat(profile: dict[str, Any]) -> tuple[dict[NodeId, Node],
             "id": name,
             "type": "root" if name == root_name else ("subfactor" if any(c["child_id"] in node_names for c in children) else "subfactor"),
             "name": name,
-            "method": "linear",
+            "method": (data or {}).get("method", "linear"),
             "params": {},
             "children": children,
         }
@@ -75,9 +75,10 @@ def flat_to_export_payload(
     normalization: str,
     winsorization: Any,
     winsor_mode: str = "quantile",
+    method: str = "linear",
 ) -> dict[str, Any]:
     """Convert flat store back to API payload (nodes dict with inputs plus
-    profile-level normalization/winsorization)."""
+    profile-level normalization, winsorization, and aggregation method)."""
     export_nodes: dict[str, Any] = {}
 
     def to_inputs(node: Node) -> dict[str, float]:
@@ -92,13 +93,17 @@ def flat_to_export_payload(
         return result
 
     for nid, node in nodes.items():
-        export_nodes[nid] = {"inputs": to_inputs(node)}
+        export_nodes[nid] = {
+            "inputs": to_inputs(node),
+            "method": node.get("method", "linear"),
+        }
 
     return {
         "nodes": export_nodes,
         "normalization": normalization,
         "winsorization": winsorization,
         "winsor_mode": winsor_mode,
+        "method": method,
     }
 
 

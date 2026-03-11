@@ -34,6 +34,20 @@ if st.session_state.wizard_step == 1:
         key_prefix="wizard_base_transforms",
         title="Base Transform Chain",
     )
+    st.divider()
+    agg_labels = ["Linear (weighted sum)", "Softplus (smooth combination)"]
+    agg_values = ["linear", "softplus"]
+    if "wizard_base_method" not in st.session_state:
+        st.session_state.wizard_base_method = "linear"
+    agg_idx = agg_values.index(st.session_state.wizard_base_method) if st.session_state.wizard_base_method in agg_values else 0
+    choice = st.selectbox(
+        "Aggregation method",
+        options=agg_labels,
+        index=agg_idx,
+        key="wizard_agg_method",
+        help="Linear = sum of weighted z-scores. Softplus = geometric-like combination using log(1+exp(z)).",
+    )
+    st.session_state.wizard_base_method = agg_values[agg_labels.index(choice)]
 
 elif st.session_state.wizard_step == 2:
     st.header("Step 2 - Base Structure")
@@ -62,14 +76,15 @@ elif st.session_state.wizard_step == 3:
     warnings.extend(validate_profile_payload(legacy_payload))
 
     transforms = st.session_state.get("wizard_transforms", [])
-    profile = convert_wizard_to_profile(base_profile, transforms=transforms)
+    method = st.session_state.get("wizard_base_method", "linear")
+    profile = convert_wizard_to_profile(base_profile, transforms=transforms, method=method)
 
     if warnings:
         for msg in warnings:
             st.warning(msg)
 
     st.subheader("Generated profile (nodes format)")
-    st.caption("Normalization and winsorization come from the Transform Chain step.")
+    st.caption("Normalization, winsorization, and aggregation method come from Step 1.")
     st.code(json.dumps(profile, indent=2), language="json")
 
     save_disabled = len(warnings) > 0 or not profile_name

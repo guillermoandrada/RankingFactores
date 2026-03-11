@@ -83,6 +83,8 @@ if f"profile_use_winsor_{selected_profile}" not in st.session_state:
     st.session_state[f"profile_use_winsor_{selected_profile}"] = bool(winsor)
 if f"profile_winsor_mode_{selected_profile}" not in st.session_state:
     st.session_state[f"profile_winsor_mode_{selected_profile}"] = profile_data.get("winsor_mode", "quantile")
+if f"profile_method_{selected_profile}" not in st.session_state:
+    st.session_state[f"profile_method_{selected_profile}"] = profile_data.get("method", "linear")
 normalization = st.session_state[f"profile_norm_{selected_profile}"]
 winsor_dict = st.session_state[f"profile_winsor_{selected_profile}"]
 use_winsor = st.session_state[f"profile_use_winsor_{selected_profile}"]
@@ -203,13 +205,25 @@ with col_editor:
 
 st.divider()
 
-# Normalization & Winsorization (global)
-with st.expander("Normalization & Winsorization"):
+# Normalization, Winsorization & Aggregation (global)
+with st.expander("Normalization, Winsorization & Aggregation"):
     norm_options = ["zscore", "normalized_zscore", "percentile"]
     idx = norm_options.index(normalization) if normalization in norm_options else 0
     st.session_state[f"profile_norm_{selected_profile}"] = st.selectbox(
         "Normalization", options=norm_options, index=idx, key="norm_sel"
     )
+    method_labels = ["Linear (weighted sum)", "Softplus (smooth combination)"]
+    method_values = ["linear", "softplus"]
+    method_key = f"profile_method_{selected_profile}"
+    method_idx = method_values.index(st.session_state[method_key]) if st.session_state[method_key] in method_values else 0
+    method_choice = st.selectbox(
+        "Aggregation method",
+        options=method_labels,
+        index=method_idx,
+        key=f"profile_agg_method_{selected_profile}",
+        help="Linear = sum of weighted z-scores. Softplus = geometric-like combination. Per-node override in Node settings.",
+    )
+    st.session_state[method_key] = method_values[method_labels.index(method_choice)]
     use_winsor = st.checkbox("Use winsorization", value=use_winsor, key="winsor_use")
     st.session_state[f"profile_use_winsor_{selected_profile}"] = use_winsor
     winsor_mode_key = f"profile_winsor_mode_{selected_profile}"
@@ -253,6 +267,7 @@ with st.expander("Preview"):
         w,
         st.session_state[f"profile_winsor_mode_{selected_profile}"],
         key_prefix,
+        method=st.session_state[f"profile_method_{selected_profile}"],
     )
 
 # Actions
@@ -268,6 +283,7 @@ with c1:
                 st.session_state[f"profile_norm_{selected_profile}"],
                 w,
                 st.session_state[f"profile_winsor_mode_{selected_profile}"],
+                method=st.session_state[f"profile_method_{selected_profile}"],
             )
             client.upsert_scoring_profile(selected_profile, payload)
             st.success(f"Saved '{selected_profile}'.")

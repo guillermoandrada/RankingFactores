@@ -324,19 +324,29 @@ def _convert_factors_layers_to_nodes(
     nodes: dict[str, dict[str, Any]] = {}
     for f in factors:
         if f.get("weights"):
-            nodes[f["name"]] = {"inputs": dict(f["weights"])}
+            nodes[f["name"]] = {
+                "inputs": dict(f["weights"]),
+                "method": f.get("method", "linear"),
+            }
     for layer in layers:
         if layer.get("weights"):
-            nodes[layer["name"]] = {"inputs": dict(layer["weights"])}
+            nodes[layer["name"]] = {
+                "inputs": dict(layer["weights"]),
+                "method": layer.get("method", "linear"),
+            }
 
     # Merge score + sole child into single "Scoring" node
-    score_inputs = nodes.get("score", {}).get("inputs") or {}
+    score_node = nodes.get("score", {})
+    score_inputs = score_node.get("inputs") or {}
     if len(score_inputs) == 1:
         top_name = next(iter(score_inputs))
-        top_node = nodes.pop(top_name, {"inputs": {}})
+        top_node = nodes.pop(top_name, {"inputs": {}, "method": "linear"})
         nodes.pop("score", None)
-        # Use "Scoring" as the merged node name, keep its inputs (factors)
-        nodes[TOP_NODE_NAME] = top_node
+        # Use "Scoring" as the merged node name, keep its inputs, use score layer's method
+        nodes[TOP_NODE_NAME] = {
+            "inputs": top_node.get("inputs", {}),
+            "method": score_node.get("method", "linear"),
+        }
     return nodes
 
 
@@ -362,9 +372,10 @@ def _transforms_to_normalization_winsor(transforms: list[dict[str, Any]]) -> tup
 def convert_wizard_to_profile(
     base: dict[str, Any],
     transforms: list[dict[str, Any]] | None = None,
+    method: str = "linear",
 ) -> dict[str, Any]:
     """Convert wizard output to the profile schema (nodes, normalization,
-    winsorization, winsor_mode)."""
+    winsorization, winsor_mode, method)."""
     factors = base.get("factors", [])
     layers = base.get("layers", [])
     nodes = _convert_factors_layers_to_nodes(factors, layers)
@@ -374,6 +385,7 @@ def convert_wizard_to_profile(
             "normalization": "zscore",
             "winsorization": {"lower": 0.01, "upper": 0.99},
             "winsor_mode": "quantile",
+            "method": method,
         }
 
     normalization, winsorization, winsor_mode = "zscore", {"lower": 0.01, "upper": 0.99}, "quantile"
@@ -385,6 +397,7 @@ def convert_wizard_to_profile(
         "normalization": normalization,
         "winsorization": winsorization,
         "winsor_mode": winsor_mode,
+        "method": method,
     }
 
 

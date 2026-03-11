@@ -67,17 +67,28 @@ def normalize_profile(profile: dict[str, Any]) -> dict[str, Any]:
     if "winsor_mode" not in p:
         p["winsor_mode"] = "quantile"
 
+    # Aggregation method default (linear or softplus)
+    if "method" not in p:
+        p["method"] = "linear"
+
+    # Ensure each node has method (inherit from profile default if missing)
+    default_method = p.get("method", "linear")
+    for node_data in (p.get("nodes") or {}).values():
+        if isinstance(node_data, dict) and "inputs" in node_data and "method" not in node_data:
+            node_data["method"] = default_method
+
     return p
 
 
 def _nodes_to_factors_and_layers(
     nodes: dict[str, Any],
-    method: str = "linear",
+    default_method: str = "linear",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """
     Convert nodes format to factors + layers.
     Leaf nodes (inputs are metrics only) -> factors.
     Non-leaf nodes -> layers, in topological order.
+    Per-node method is used when present; otherwise default_method.
     """
     node_names = set(nodes.keys())
     factors: list[dict[str, Any]] = []
@@ -109,9 +120,11 @@ def _nodes_to_factors_and_layers(
     available = set()
 
     for node_name in order:
-        inputs = nodes.get(node_name, {}).get("inputs", {})
+        node_data = nodes.get(node_name, {})
+        inputs = node_data.get("inputs", {})
         if not inputs:
             continue
+        method = node_data.get("method") or default_method
         spec = {"name": node_name, "method": method, "weights": dict(inputs)}
 
         if all(is_metric(k) for k in inputs):
@@ -140,22 +153,22 @@ def _convert_profile_to_legacy(
     if not nodes:
         raise ValueError("Profile must have non-empty 'nodes'.")
 
-    method = profile.get("method", "linear")
+    default_method = profile.get("method", "linear")
     metric_transforms = _profile_to_transform_chain(profile)
 
-    factors, layers = _nodes_to_factors_and_layers(nodes, method=method)
+    factors, layers = _nodes_to_factors_and_layers(nodes, default_method=default_method)
     if not factors:
         raise ValueError("Profile must have at least one factor (leaf node).")
     if not layers:
         # Single root node (e.g. "Scoring"): add synthetic score layer for legacy format
         root_name = factors[-1]["name"]
-        layers = [{"name": "score", "method": method, "weights": {root_name: 1.0}}]
+        layers = [{"name": "score", "method": default_method, "weights": {root_name: 1.0}}]
 
     return {
         "factors": factors,
         "layers": layers,
         "metric_transforms": metric_transforms,
-        "method": method,
+        "method": default_method,
     }
 
 
