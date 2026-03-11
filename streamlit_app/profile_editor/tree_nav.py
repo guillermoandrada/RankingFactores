@@ -35,7 +35,18 @@ def render_tree_nav(
     issues = validate_nodes(nodes, root_id)
     issue_nodes = {i["node_id"] for i in issues}
 
+    # Guard against accidental graph cycles or duplicated child references.
+    # We only render each node_id once in the tree to avoid infinite recursion
+    # and duplicate Streamlit widget keys for the same node.
+    visited: set[str] = set()
+
     def render_node(node_id: str, parent_id: str | None, depth: int) -> None:
+        if node_id in visited:
+            # Already rendered this node; show a lightweight reference and stop.
+            indent = " " * depth
+            st.caption(f"{indent}↳ {nodes.get(node_id, {}).get('name', node_id)} (linked)")
+            return
+        visited.add(node_id)
         node = nodes.get(node_id)
         if not node:
             return

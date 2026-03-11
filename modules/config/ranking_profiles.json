@@ -139,6 +139,39 @@
       "normalization": "percentile",
       "winsorization": false,
       "winsor_mode": "quantile"
+    },
+    "Value": {
+      "nodes": {
+        "P/E Factor": {
+          "inputs": {
+            "BEst P/E": 0.75,
+            "P/E": 0.25
+          }
+        },
+        "P/B Factor": {
+          "inputs": {
+            "P/B": 1.0
+          }
+        },
+        "EV/EBITDA Factor": {
+          "inputs": {
+            "EV/EBITDA": 1.0
+          }
+        },
+        "Scoring": {
+          "inputs": {
+            "P/E Factor": 0.25,
+            "P/B Factor": 0.25,
+            "EV/EBITDA Factor": 0.5
+          }
+        }
+      },
+      "normalization": "zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile"
     }
   }
 }
