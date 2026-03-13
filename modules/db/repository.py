@@ -243,6 +243,62 @@ class FinancialDatabase:
             ).fetchall()
         return [r[0] for r in rows if r[0]]
 
+    def get_security_metadata(
+        self,
+        period: str,
+        tickers: list[str] | None = None,
+    ) -> list[dict]:
+        """
+        Return security metadata for a period.
+
+        Uses period-specific classification when available and falls back to the
+        base security table classification otherwise.
+        """
+        tbl_sec = self._get_table("securities")
+        tbl_class = self._get_table("security_classification")
+        tbl_sector = self._get_table("sectors")
+        tbl_industry = self._get_table("industries")
+
+        query = (
+            select(
+                tbl_sec.c.ticker,
+                tbl_sec.c.long_name,
+                tbl_sector.c.sector_name,
+                tbl_industry.c.industry_name,
+            )
+            .select_from(tbl_sec)
+            .outerjoin(
+                tbl_class,
+                and_(
+                    tbl_class.c.security_id == tbl_sec.c.id,
+                    tbl_class.c.period == period,
+                ),
+            )
+            .outerjoin(
+                tbl_sector,
+                tbl_sector.c.sector_id == tbl_class.c.sector_id,
+            )
+            .outerjoin(
+                tbl_industry,
+                tbl_industry.c.industry_id == tbl_class.c.industry_id,
+            )
+        )
+        if tickers:
+            query = query.where(tbl_sec.c.ticker.in_(tickers))
+
+        with self._engine.connect() as conn:
+            rows = conn.execute(query).fetchall()
+
+        result = []
+        for row in rows:
+            result.append({
+                "ticker": row[0],
+                "name": row[1],
+                "sector": row[2],
+                "industry": row[3],
+            })
+        return result
+
     def list_indices(self) -> list[str]:
         """Return all index names in the database."""
         tbl = self._get_table("indices")

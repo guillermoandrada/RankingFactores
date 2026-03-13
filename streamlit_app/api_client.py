@@ -245,6 +245,15 @@ class RankingApiClient:
         path = f"/scorings/{quote(period, safe='')}"
         return self._request("POST", path, json=body)
 
+    def construct_portfolio(
+        self,
+        period: str,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Run portfolio construction for a period."""
+        path = f"/portfolios/{quote(period, safe='')}"
+        return self._request("POST", path, json=body)
+
     def run_ranking_batch(
         self,
         period: str,

@@ -18,4 +18,5 @@ Select a page from the **sidebar** in workflow order:
 3. **Scoring Profile Wizard** — Build scoring methodologies step-by-step.
 4. **Scoring Profiles** — Edit and manage saved scoring profiles.
 5. **Ranking** — Run rankings for a period and profile, export results.
+6. **Portfolio Construction** — Build or rebalance portfolios from ranking output.
 """)

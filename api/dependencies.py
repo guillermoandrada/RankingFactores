@@ -44,3 +44,10 @@ def get_metrics_service():
     from api.services.metrics_service import MetricsService
 
     return MetricsService(derived_store=get_derived_store())
+
+
+@lru_cache(maxsize=1)
+def get_portfolio_service():
+    from api.services.portfolio_service import PortfolioService
+
+    return PortfolioService(db=get_db())
