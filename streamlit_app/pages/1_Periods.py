@@ -26,32 +26,97 @@ tabs = st.tabs(["Create", "View & Edit", "Delete"])
 
 # --- Create tab ---
 with tabs[0]:
-    render_section("Create period from file", "Upload Bloomberg Excel (.xlsx, .xls).")
+    render_section("Create period from file", "Upload Bloomberg or Reuters Excel (.xlsx, .xls).")
+    upload_success_message = st.session_state.pop("period_upload_success", None)
+    if upload_success_message:
+        st.success(upload_success_message)
+
+    reader = st.selectbox(
+        "Reader",
+        options=["bloomberg", "reuters_metrics"],
+        key="period_create_reader",
+        format_func=lambda value: "Bloomberg" if value == "bloomberg" else "Reuters Metrics",
+    )
+
+    target_period = None
+    existing_periods_for_append: list[str] = []
+    upload_behavior = "replace"
+
+    if reader == "reuters_metrics":
+        st.caption("Reuters uploads require a manual period and store the metric as `Reuters Score`.")
+        import_mode = st.radio(
+            "Import target",
+            options=["create_or_replace", "append_existing"],
+            key="period_reuters_import_mode",
+            format_func=lambda value: (
+                "Create or replace a named period"
+                if value == "create_or_replace"
+                else "Append to an existing period"
+            ),
+        )
+
+        try:
+            existing_periods_for_append = client.list_periods()
+        except ApiError as exc:
+            st.warning(f"Could not load existing periods: {exc}")
+
+        if import_mode == "append_existing":
+            upload_behavior = "append"
+            if existing_periods_for_append:
+                target_period = st.selectbox(
+                    "Existing period",
+                    options=existing_periods_for_append,
+                    key="period_reuters_existing_period",
+                    help="Reuters Score will be merged into this period by ticker.",
+                )
+                st.caption(
+                    "Append merges the uploaded Reuters Score values into the selected period by ticker."
+                )
+            else:
+                st.info("No existing periods available to append to yet.")
+        else:
+            upload_behavior = "replace"
+            target_period = st.text_input(
+                "Period",
+                key="period_reuters_period",
+                help="Required for Reuters uploads because the file does not encode the period.",
+            )
+            st.caption("This creates the period if it does not exist, or replaces it if it already exists.")
+    else:
+        st.caption("Bloomberg uploads infer the period directly from the file.")
+
     file = st.file_uploader(
         "Select file",
         type=["xlsx", "xls"],
         key="period_create_file",
     )
-    if_period_exists = st.selectbox(
-        "If period exists",
-        options=["replace", "append"],
-        index=0,
-        key="period_if_exists",
-        help="replace = overwrite; append = merge new metrics/securities",
-    )
+    if reader == "bloomberg":
+        upload_behavior = st.selectbox(
+            "If period exists",
+            options=["replace", "append"],
+            index=0,
+            key="period_if_exists",
+            help="replace = overwrite; append = merge new metrics/securities",
+        )
     if st.button("Create period", type="primary", key="period_create_btn"):
         if not file:
             st.error("Select a file first.")
+        elif reader == "reuters_metrics" and upload_behavior == "append" and not existing_periods_for_append:
+            st.error("No existing periods are available for append.")
+        elif reader == "reuters_metrics" and not str(target_period or "").strip():
+            st.error("Enter or select a period for the Reuters upload.")
         else:
             try:
                 content = file.read()
                 result = client.create_period(
                     file_content=content,
                     filename=file.name,
-                    if_period_exists=if_period_exists,
+                    if_period_exists=upload_behavior,
+                    reader=reader,
+                    period=target_period,
                 )
-                st.success(
-                    f"Period '{result.get('period', '')}' created. "
+                st.session_state["period_upload_success"] = (
+                    f"Period '{result.get('period', '')}' uploaded successfully. "
                     f"Companies: {result.get('companies_count', 0)}, "
                     f"Metrics: {result.get('metrics_count', 0)}, "
                     f"Records: {result.get('records_count', 0)}."
@@ -91,6 +156,14 @@ with tabs[1]:
 
         if content and content.get("data") and period_name == selected:
             df = pd.DataFrame(content["data"])
+            preferred_columns = [
+                column
+                for column in ("ticker", "name", "sector", "industry", "security_id")
+                if column in df.columns
+            ]
+            remaining_columns = [column for column in df.columns if column not in preferred_columns]
+            if preferred_columns:
+                df = df[preferred_columns + remaining_columns]
             metrics = content.get("metrics", [])
             metric_ids_map = {}
             try:

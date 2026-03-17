@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class HoldingRow(BaseModel):
@@ -38,6 +38,7 @@ class PortfolioBuildBody(BaseModel):
     current_holdings: list[HoldingRow] = Field(default_factory=list)
     ethical_filter_rows: list[EthicalFilterRow] = Field(default_factory=list)
 
+    constraint_type: Literal["none", "sector", "industry"] = "none"
     sector_targets: dict[str, float] = Field(default_factory=dict)
     industry_targets: dict[str, float] = Field(default_factory=dict)
 
@@ -55,4 +56,26 @@ class PortfolioBuildBody(BaseModel):
     long_short_weighting: Literal["equal", "score"] = "equal"
     gross_exposure: float = 1.0
     net_exposure: float = 0.0
+
+    @model_validator(mode="after")
+    def validate_constraint_targets(self) -> "PortfolioBuildBody":
+        if self.constraint_type == "none":
+            if self.sector_targets or self.industry_targets:
+                raise ValueError(
+                    "constraint_type='none' requires both sector_targets and industry_targets to be empty."
+                )
+            return self
+
+        if self.constraint_type == "sector":
+            if self.industry_targets:
+                raise ValueError(
+                    "constraint_type='sector' cannot be used together with industry_targets."
+                )
+            return self
+
+        if self.sector_targets:
+            raise ValueError(
+                "constraint_type='industry' cannot be used together with sector_targets."
+            )
+        return self
 

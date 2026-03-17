@@ -20,6 +20,28 @@ def get_metric_names_from_profile(profile: dict) -> list[str]:
     return unique
 
 
+def _apply_display_labels(df_ranked: pd.DataFrame) -> pd.DataFrame:
+    """Apply user-facing column labels and reject duplicate display names."""
+    rename_map: dict[str, str] = {}
+    for col in df_ranked.columns:
+        new_name = col
+        if new_name.endswith("_zscore"):
+            new_name = new_name[: -len("_zscore")] + " Score"
+        if new_name:
+            new_name = new_name[0].upper() + new_name[1:]
+        rename_map[col] = new_name
+
+    renamed = df_ranked.rename(columns=rename_map)
+    duplicate_columns = renamed.columns[renamed.columns.duplicated()].tolist()
+    if duplicate_columns:
+        duplicates = ", ".join(sorted(set(str(col) for col in duplicate_columns)))
+        raise ValueError(
+            "Ranking output contains duplicate display columns: "
+            f"{duplicates}. Rename the conflicting profile node or metric."
+        )
+    return renamed
+
+
 def compute_ranking(
     *,
     quarter: str,
@@ -63,6 +85,7 @@ def compute_ranking(
         sector=sector_filter,
         profile=resolved_profile,
     )
+    warnings = list(df_ranked.attrs.get("warnings", []))
     df_ranked = df_ranked.sort_values("scoring", ascending=False).reset_index()
     if "security_id" in df_ranked.columns:
         df_ranked = df_ranked.drop(columns=["security_id"])
@@ -77,17 +100,8 @@ def compute_ranking(
     # Human-friendly column labels:
     # - Replace '_zscore' suffix with ' Score'
     # - Capitalize the first letter of each column name
-    rename_map: dict[str, str] = {}
-    for col in df_ranked.columns:
-        new_name = col
-        if new_name.endswith("_zscore"):
-            new_name = new_name[: -len("_zscore")] + " Score"
-        # Capitalize first character only; keep rest as-is
-        if new_name:
-            new_name = new_name[0].upper() + new_name[1:]
-        rename_map[col] = new_name
-    df_ranked = df_ranked.rename(columns=rename_map)
-
+    df_ranked = _apply_display_labels(df_ranked)
+    df_ranked.attrs["warnings"] = warnings
     return df_ranked
 
 

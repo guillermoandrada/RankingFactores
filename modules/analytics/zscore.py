@@ -71,9 +71,21 @@ class ZScoreCalculator:
             for s in chain
         )
         result = df_wide.copy()
+        warnings: list[str] = []
+        missing_metrics = set(df_wide.attrs.get("missing_metrics", []))
         # Only transform metrics in the profile (metric_names), not composing base metrics
         for col in metric_names:
             if col not in result.columns:
+                result[col] = 0.0
+            series = pd.to_numeric(result[col], errors="coerce")
+            if col in missing_metrics or series.isna().all():
+                warnings.append(
+                    f"Metric '{col}' is completely missing for this scope; its score was set to 0 for all securities."
+                )
+                result[col] = 0.0
+                if use_winsor:
+                    result[f"{col}_winsor"] = 0.0
+                result[f"{col}{out_suffix}"] = 0.0
                 continue
             if use_winsor:
                 result[f"{col}_winsor"] = self._transforms.apply_chain(
@@ -92,4 +104,5 @@ class ZScoreCalculator:
                 keep_cols.append(col)  # raw value for display when no winsorization
             keep_cols.append(f"{col}{out_suffix}")
         result = result[keep_cols]
+        result.attrs["warnings"] = warnings
         return result, direction_map

@@ -1,0 +1,59 @@
+{
+  "formulas": {
+    "Past Book to Price": {
+      "metric_names": [
+        "5Y Average Book to Price",
+        "Current Book to Price"
+      ],
+      "operations": [
+        "-"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Past Earnings Yield": {
+      "metric_names": [
+        "Current Earnings Yield",
+        "5Y Average Earnings Yield"
+      ],
+      "operations": [
+        "-"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Forward Earnings Yield": {
+      "metric_names": [
+        "Estimated Earnings Yield",
+        "Current Earnings Yield"
+      ],
+      "operations": [
+        "-"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Operating Margin Trend": {
+      "metric_names": [
+        "Current Operating Margin",
+        "5Y Average Operating Margin"
+      ],
+      "operations": [
+        "-"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Tendencia Earnings Yield": {
+      "metric_names": [
+        "Current Earnings Yield",
+        "5Y Average Earnings Yield"
+      ],
+      "operations": [
+        "-"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_low"
+    }
+  }
+}

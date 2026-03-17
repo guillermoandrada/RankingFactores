@@ -40,7 +40,7 @@ class DataImporter:
         Import a single file into the database.
         Returns ImportResult with counts.
         period_override: use instead of extracting from file.
-        reader: 'bloomberg' (Bloomberg Excel format).
+        reader: concrete reader name such as 'bloomberg' or 'reuters_metrics'.
         if_period_exists: 'replace' (overwrite) or 'append' (merge new metrics/securities).
         """
         if not os.path.exists(filepath):
@@ -58,11 +58,24 @@ class DataImporter:
 
         df = df.dropna(subset=["Ticker"])
         period = period_override or self._reader.extract_period(filepath, reader)
+        if not str(period or "").strip() or str(period).strip().upper() == "UNKNOWN":
+            raise ValueError(
+                f"Could not determine period for reader '{reader}'. "
+                "Provide a period manually."
+            )
         if verbose:
             print(f"--> Period: {period}")
 
         mode = "append" if if_period_exists == "append" else "replace"
-        result = self._db.save_fundamentals(df, period, index_code, mode=mode)
+        result = self._db.save_fundamentals(
+            df,
+            period,
+            index_code,
+            mode=mode,
+            preserve_existing_classification=(
+                reader == "reuters_metrics" and mode == "append"
+            ),
+        )
 
         if verbose:
             print(

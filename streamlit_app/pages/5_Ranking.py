@@ -254,6 +254,9 @@ else:
                 profile_for_scope = result.get("scoring_profile", scoring_profile)
                 title = f"**{scope_key}** — {count} companies · {profile_for_scope}"
                 with st.expander(title, expanded=(len(results) == 1)):
+                    warnings = result.get("warnings", [])
+                    for warning in warnings:
+                        st.warning(warning)
                     st.dataframe(df, use_container_width=True)
 
         # Export to Excel: append all rankings vertically in one worksheet

@@ -22,24 +22,42 @@ async def get_period_content(period: str):
 @router.post("", status_code=201)
 async def create_period(
     file: UploadFile = File(...),
+    reader: str = Query(
+        default="bloomberg",
+        description="Reader name: 'bloomberg', 'reuters_metrics', or 'auto'.",
+    ),
     if_period_exists: str = Query(
         default="replace",
         description="If period exists: 'replace' (overwrite) or 'append' (merge new metrics/securities).",
     ),
+    period: str | None = Query(
+        default=None,
+        description="Manual period override. Required for readers that do not embed the period in the file.",
+    ),
 ):
     """
-    Create a new period table from an imported Bloomberg Excel file.
+    Create a new period table from an imported Excel file.
     If period already exists: replace (overwrite) or append (merge) based on if_period_exists.
     """
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(
             status_code=400,
-            detail="File must be .xlsx or .xls (Bloomberg Excel format)",
+            detail="File must be .xlsx or .xls.",
+        )
+    if reader not in ("bloomberg", "reuters_metrics", "auto"):
+        raise HTTPException(
+            status_code=400,
+            detail="reader must be 'bloomberg', 'reuters_metrics', or 'auto'.",
         )
     if if_period_exists not in ("replace", "append"):
         raise HTTPException(
             status_code=400,
             detail="if_period_exists must be 'replace' or 'append'.",
+        )
+    if reader == "reuters_metrics" and not (period or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="period is required when reader='reuters_metrics'.",
         )
 
     try:
@@ -48,6 +66,8 @@ async def create_period(
             file_contents=contents,
             filename=file.filename,
             if_period_exists=if_period_exists,
+            reader=reader,
+            period=period,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -90,8 +110,8 @@ async def update_period(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except FileNotFoundError:
-        raise HTTPException(status_code=400, detail="File not found")
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail="File not found") from exc
     except Exception:
         raise HTTPException(
             status_code=500,

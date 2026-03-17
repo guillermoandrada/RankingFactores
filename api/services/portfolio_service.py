@@ -26,6 +26,10 @@ from modules.portfolio.models import (
 )
 
 
+CASH_TICKER = "CASH_USD"
+CASH_NAME = "Cash"
+
+
 def _first_present(df: pd.DataFrame, names: list[str]) -> str:
     for name in names:
         if name in df.columns:
@@ -70,10 +74,25 @@ class PortfolioService:
             if total_capital <= 0:
                 raise ValueError("Existing portfolio value must be positive.")
 
+        target_cash_weight = self._target_cash_weight(
+            strategy=request.strategy,
+            target_positions=target_positions,
+        )
+        notes = list(diagnostics.notes)
+        if target_cash_weight > 0:
+            if target_positions:
+                notes.append(
+                    f"Residual weight of {round(target_cash_weight, 6)} was assigned to cash."
+                )
+            else:
+                notes.append("No target securities were generated; portfolio was allocated to cash.")
+
         positions_payload = self._build_positions_payload(
             target_positions,
             total_capital=total_capital,
             current_positions=current_positions,
+            current_cash=cash,
+            target_cash_weight=target_cash_weight,
         )
         current_portfolio_payload = self._build_current_portfolio_payload(
             current_positions,
@@ -85,9 +104,12 @@ class PortfolioService:
             current_positions=current_positions,
             total_capital=total_capital,
             min_trade_weight=float(request.min_trade_weight),
+            current_cash=cash,
+            target_cash_weight=target_cash_weight,
         )
         constraint_diagnostics = self._build_constraint_diagnostics(
             target_positions,
+            constraint_type=request.constraint_type,
             sector_targets=request.sector_targets,
             industry_targets=request.industry_targets,
         )
@@ -112,7 +134,7 @@ class PortfolioService:
             "trades": trades_payload,
             "excluded": diagnostics.excluded,
             "constraint_diagnostics": constraint_diagnostics,
-            "notes": diagnostics.notes,
+            "notes": notes,
             "source_count": len(candidates),
         }
 
@@ -162,6 +184,7 @@ class PortfolioService:
                 max_position=float(request.max_position),
                 neutral_position=float(request.neutral_position),
                 score_quantile_cutoff=float(request.score_quantile_cutoff),
+                constraint_type=request.constraint_type,
                 sector_targets=request.sector_targets,
                 industry_targets=request.industry_targets,
             )
@@ -210,6 +233,8 @@ class PortfolioService:
         *,
         total_capital: float,
         current_positions: list[HoldingPosition],
+        current_cash: float,
+        target_cash_weight: float,
     ) -> list[dict[str, Any]]:
         current_weights = self._current_weight_map(current_positions, total_capital)
         payload = []
@@ -228,7 +253,18 @@ class PortfolioService:
                 "target_weight": round(position.target_weight, 6),
                 "target_amount": round(position.target_weight * total_capital, 6),
             })
-        return payload
+        if target_cash_weight > 0:
+            payload.append({
+                "ticker": CASH_TICKER,
+                "name": CASH_NAME,
+                "sector": "",
+                "industry": "",
+                "score": None,
+                "current_weight": round(self._cash_weight(current_cash, total_capital), 6),
+                "target_weight": round(target_cash_weight, 6),
+                "target_amount": round(target_cash_weight * total_capital, 6),
+            })
+        return sorted(payload, key=lambda item: item["target_weight"], reverse=True)
 
     def _build_current_portfolio_payload(
         self,
@@ -237,7 +273,7 @@ class PortfolioService:
         total_capital: float,
         cash: float,
     ) -> list[dict[str, Any]]:
-        if not current_positions:
+        if not current_positions and cash <= 0:
             return []
         payload = []
         for position in current_positions:
@@ -255,8 +291,8 @@ class PortfolioService:
             })
         if cash:
             payload.append({
-                "ticker": "CASH_USD",
-                "name": "Cash",
+                "ticker": CASH_TICKER,
+                "name": CASH_NAME,
                 "sector": "",
                 "industry": "",
                 "score": None,
@@ -274,8 +310,10 @@ class PortfolioService:
         current_positions: list[HoldingPosition],
         total_capital: float,
         min_trade_weight: float,
+        current_cash: float,
+        target_cash_weight: float,
     ) -> list[dict[str, Any]]:
-        if not current_positions:
+        if not current_positions and current_cash <= 0:
             return []
         target_map = {position.ticker: position for position in target_positions}
         current_map = {position.ticker: position for position in current_positions}
@@ -308,6 +346,23 @@ class PortfolioService:
                     industry=(target.industry if target else current.industry if current else ""),
                 )
             )
+        current_cash_weight = self._cash_weight(current_cash, total_capital)
+        cash_delta = target_cash_weight - current_cash_weight
+        if abs(cash_delta) >= min_trade_weight:
+            trades.append(
+                PortfolioTrade(
+                    action="raise_cash" if cash_delta > 0 else "deploy_cash",
+                    ticker=CASH_TICKER,
+                    weight_delta=cash_delta,
+                    current_weight=current_cash_weight,
+                    target_weight=target_cash_weight,
+                    reason="cash_rebalance",
+                    quantity_delta=None,
+                    price=None,
+                    sector="",
+                    industry="",
+                )
+            )
         return [
             {
                 "action": trade.action,
@@ -328,14 +383,19 @@ class PortfolioService:
         self,
         target_positions: list[TargetPosition],
         *,
+        constraint_type: str,
         sector_targets: dict[str, float],
         industry_targets: dict[str, float],
     ) -> dict[str, list[dict[str, Any]]]:
         sector_actual = compute_group_weights(target_positions, "sector")
         industry_actual = compute_group_weights(target_positions, "industry")
         return {
-            "sector": self._diagnostic_rows(sector_targets, sector_actual),
-            "industry": self._diagnostic_rows(industry_targets, industry_actual),
+            "sector": self._diagnostic_rows(sector_targets, sector_actual)
+            if constraint_type == "sector"
+            else [],
+            "industry": self._diagnostic_rows(industry_targets, industry_actual)
+            if constraint_type == "industry"
+            else [],
         }
 
     @staticmethod
@@ -345,13 +405,15 @@ class PortfolioService:
     ) -> list[dict[str, Any]]:
         rows = []
         for key in sorted(set(targets) | set(actual)):
-            target = float(targets.get(key, 0.0))
+            is_specified = key in targets
+            target = float(targets[key]) if is_specified else None
             actual_value = float(actual.get(key, 0.0))
             rows.append({
                 "group": key,
-                "target_weight": round(target, 6),
+                "target_weight": round(target, 6) if target is not None else None,
                 "actual_weight": round(actual_value, 6),
-                "difference": round(actual_value - target, 6),
+                "difference": round(actual_value - target, 6) if target is not None else None,
+                "specified": is_specified,
             })
         return rows
 
@@ -366,4 +428,27 @@ class PortfolioService:
             position.ticker: position.amount() / total_capital
             for position in positions
         }
+
+    @staticmethod
+    def _cash_weight(
+        cash: float,
+        total_capital: float,
+    ) -> float:
+        if total_capital <= 0 or cash <= 0:
+            return 0.0
+        return max(0.0, float(cash) / float(total_capital))
+
+    @staticmethod
+    def _target_cash_weight(
+        *,
+        strategy: str,
+        target_positions: list[TargetPosition],
+    ) -> float:
+        if strategy == "long_short":
+            return 1.0 if not target_positions else 0.0
+        allocated_weight = sum(
+            max(0.0, float(position.target_weight))
+            for position in target_positions
+        )
+        return max(0.0, 1.0 - allocated_weight)
 

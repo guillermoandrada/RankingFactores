@@ -37,29 +37,39 @@ def migrate_legacy_to_flat(profile: dict[str, Any]) -> tuple[dict[NodeId, Node],
     root_name = "Scoring" if "Scoring" in legacy_nodes else ("score" if "score" in legacy_nodes else next(iter(legacy_nodes)))
     node_names = set(legacy_nodes.keys())
     nodes: dict[NodeId, Node] = {}
+    visiting: set[str] = set()
 
     def visit(name: str) -> NodeId:
         if name in nodes:
             return name
-        data = legacy_nodes.get(name, {})
-        inputs = (data or {}).get("inputs") or {}
-        children: list[ChildEntry] = []
-        for child_name, w in inputs.items():
-            child_id = child_name
-            if child_name in node_names:
-                visit(child_name)
-            children.append({"child_id": child_id, "weight": float(w), "enabled": True})
-        nodes[name] = {
-            "id": name,
-            "type": "root" if name == root_name else ("subfactor" if any(c["child_id"] in node_names for c in children) else "subfactor"),
-            "name": name,
-            "method": (data or {}).get("method", "linear"),
-            "params": {},
-            "children": children,
-        }
-        if name == root_name:
-            nodes[name]["type"] = "root"
-        return name
+        if name in visiting:
+            raise ValueError(
+                f"Circular profile reference detected at node '{name}'. "
+                "A node cannot depend on itself, directly or indirectly."
+            )
+        visiting.add(name)
+        try:
+            data = legacy_nodes.get(name, {})
+            inputs = (data or {}).get("inputs") or {}
+            children: list[ChildEntry] = []
+            for child_name, w in inputs.items():
+                child_id = child_name
+                if child_name in node_names:
+                    visit(child_name)
+                children.append({"child_id": child_id, "weight": float(w), "enabled": True})
+            nodes[name] = {
+                "id": name,
+                "type": "root" if name == root_name else ("subfactor" if any(c["child_id"] in node_names for c in children) else "subfactor"),
+                "name": name,
+                "method": (data or {}).get("method", "linear"),
+                "params": {},
+                "children": children,
+            }
+            if name == root_name:
+                nodes[name]["type"] = "root"
+            return name
+        finally:
+            visiting.remove(name)
 
     visit(root_name)
     for name in legacy_nodes:

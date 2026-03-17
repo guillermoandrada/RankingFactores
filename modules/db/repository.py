@@ -6,10 +6,11 @@ Encapsulates all database operations.
 from __future__ import annotations
 
 import json
+import re
 from typing import Optional
 
 import pandas as pd
-from sqlalchemy import create_engine, select, delete, update, and_, MetaData, Table
+from sqlalchemy import create_engine, select, delete, update, and_, MetaData, Table, func
 from sqlalchemy.engine import Engine
 
 from modules.config import DB_URL, FIXED_COLUMNS
@@ -73,6 +74,9 @@ class FinancialDatabase:
         tbl_fund = self._get_table("fundamental_values")
         tbl_sec = self._get_table("securities")
         tbl_metric = self._get_table("metrics")
+        tbl_class = self._get_table("security_classification")
+        tbl_sector = self._get_table("sectors")
+        tbl_industry = self._get_table("industries")
         with self._engine.connect() as conn:
             df = pd.read_sql_query(
                 select(
@@ -81,22 +85,41 @@ class FinancialDatabase:
                     tbl_fund.c.metric_id,
                     tbl_fund.c.value,
                     tbl_sec.c.ticker,
+                    tbl_sec.c.long_name.label("name"),
+                    tbl_sector.c.sector_name.label("sector"),
+                    tbl_industry.c.industry_name.label("industry"),
                     tbl_metric.c.metric_name,
                 )
                 .select_from(tbl_fund)
                 .join(tbl_sec, tbl_sec.c.id == tbl_fund.c.security_id)
                 .join(tbl_metric, tbl_metric.c.metric_id == tbl_fund.c.metric_id)
+                .outerjoin(
+                    tbl_class,
+                    and_(
+                        tbl_class.c.security_id == tbl_fund.c.security_id,
+                        tbl_class.c.period == tbl_fund.c.period,
+                    ),
+                )
+                .outerjoin(
+                    tbl_sector,
+                    tbl_sector.c.sector_id == func.coalesce(tbl_class.c.sector_id, tbl_sec.c.sector_id),
+                )
+                .outerjoin(
+                    tbl_industry,
+                    tbl_industry.c.industry_id == func.coalesce(tbl_class.c.industry_id, tbl_sec.c.industry_id),
+                )
                 .where(tbl_fund.c.period == period),
                 con=conn,
             )
         if df.empty:
             return {"period": period, "metrics": [], "data": []}
         wide = df.pivot_table(
-            index=["security_id", "ticker"],
+            index=["security_id", "ticker", "name", "sector", "industry"],
             columns="metric_name",
             values="value",
+            aggfunc="first",
         ).reset_index()
-        metrics = list(wide.columns.drop(["security_id", "ticker"]))
+        metrics = list(wide.columns.drop(["security_id", "ticker", "name", "sector", "industry"]))
         data = json.loads(wide.to_json(orient="records", date_format="iso"))
         return {
             "period": period,
@@ -232,7 +255,12 @@ class FinancialDatabase:
         tbl = self._get_table("sectors")
         with self._engine.connect() as conn:
             rows = conn.execute(select(tbl.c.sector_name).order_by(tbl.c.sector_name)).fetchall()
-        return [r[0] for r in rows if r[0]]
+        unique: dict[str, str] = {}
+        for row in rows:
+            normalized = self._normalize_label(row[0])
+            if normalized and normalized not in unique:
+                unique[normalized] = normalized
+        return sorted(unique.values())
 
     def list_industries(self) -> list[str]:
         """Return all industry names in the database."""
@@ -241,7 +269,12 @@ class FinancialDatabase:
             rows = conn.execute(
                 select(tbl.c.industry_name).order_by(tbl.c.industry_name)
             ).fetchall()
-        return [r[0] for r in rows if r[0]]
+        unique: dict[str, str] = {}
+        for row in rows:
+            normalized = self._normalize_label(row[0])
+            if normalized and normalized not in unique:
+                unique[normalized] = normalized
+        return sorted(unique.values())
 
     def get_security_metadata(
         self,
@@ -523,12 +556,15 @@ class FinancialDatabase:
         period: str,
         index_code: Optional[str] = None,
         mode: str = "replace",
+        preserve_existing_classification: bool = False,
     ) -> ImportResult:
         """
         Save a DataFrame of fundamental data to the database.
         Normalizes sectors, industries, metrics; upserts securities;
         optionally registers index membership.
         mode: 'replace' (default) overwrites period; 'append' merges new metrics/securities.
+        preserve_existing_classification: when True in append mode, existing
+        securities keep their current period/base sector and industry mapping.
         """
         if "Ticker" not in df.columns:
             raise ValueError(
@@ -549,6 +585,7 @@ class FinancialDatabase:
         classification_map: dict[str, tuple[int | None, int | None]] = {}
         sector_cache: dict[str, int] = {}
         industry_cache: dict[str, int] = {}
+        new_security_ids: set[int] = set()
 
         with self._engine.begin() as conn:
             for _, row in companies.iterrows():
@@ -556,6 +593,9 @@ class FinancialDatabase:
                 long_name_val = row.get("Long Name")
                 sector_name = row.get("GICS Sector Name")
                 industry_name = row.get("GICS Industry Group Name")
+                existing_security = conn.execute(
+                    select(tbl_sec.c.id).where(tbl_sec.c.ticker == ticker_val)
+                ).first()
 
                 sector_id = self._resolve_sector(
                     conn, tbl_sector, sector_name, sector_cache
@@ -574,6 +614,8 @@ class FinancialDatabase:
                     industry_id,
                 )
                 ticker_map[ticker_val] = sec_id
+                if existing_security is None:
+                    new_security_ids.add(sec_id)
 
             sec_ids = list(ticker_map.values())
             if mode == "replace":
@@ -581,17 +623,29 @@ class FinancialDatabase:
                     delete(tbl_classification).where(tbl_classification.c.period == period)
                 )
             else:
-                conn.execute(
-                    delete(tbl_classification).where(
-                        and_(
-                            tbl_classification.c.security_id.in_(sec_ids),
-                            tbl_classification.c.period == period,
+                classification_sec_ids = (
+                    list(new_security_ids)
+                    if preserve_existing_classification
+                    else sec_ids
+                )
+                if classification_sec_ids:
+                    conn.execute(
+                        delete(tbl_classification).where(
+                            and_(
+                                tbl_classification.c.security_id.in_(classification_sec_ids),
+                                tbl_classification.c.period == period,
+                            )
                         )
                     )
-                )
             for ticker in ticker_map:
                 sec_id_val, ind_id_val = classification_map[ticker]
                 security_id = ticker_map[ticker]
+                if (
+                    mode == "append"
+                    and preserve_existing_classification
+                    and security_id not in new_security_ids
+                ):
+                    continue
                 conn.execute(
                     tbl_classification.insert().values(
                         security_id=security_id,
@@ -696,34 +750,36 @@ class FinancialDatabase:
         )
 
     def _resolve_sector(self, conn, tbl, name, cache):
-        if not name:
+        normalized_name = self._normalize_label(name)
+        if not normalized_name:
             return None
-        if name in cache:
-            return cache[name]
+        if normalized_name in cache:
+            return cache[normalized_name]
         row = conn.execute(
-            select(tbl.c.sector_id).where(tbl.c.sector_name == name)
+            select(tbl.c.sector_id).where(tbl.c.sector_name == normalized_name)
         ).first()
         if row:
-            cache[name] = row[0]
+            cache[normalized_name] = row[0]
             return row[0]
-        ins = conn.execute(tbl.insert().values(sector_name=name))
-        cache[name] = ins.inserted_primary_key[0]
-        return cache[name]
+        ins = conn.execute(tbl.insert().values(sector_name=normalized_name))
+        cache[normalized_name] = ins.inserted_primary_key[0]
+        return cache[normalized_name]
 
     def _resolve_industry(self, conn, tbl, name, cache):
-        if not name:
+        normalized_name = self._normalize_label(name)
+        if not normalized_name:
             return None
-        if name in cache:
-            return cache[name]
+        if normalized_name in cache:
+            return cache[normalized_name]
         row = conn.execute(
-            select(tbl.c.industry_id).where(tbl.c.industry_name == name)
+            select(tbl.c.industry_id).where(tbl.c.industry_name == normalized_name)
         ).first()
         if row:
-            cache[name] = row[0]
+            cache[normalized_name] = row[0]
             return row[0]
-        ins = conn.execute(tbl.insert().values(industry_name=name))
-        cache[name] = ins.inserted_primary_key[0]
-        return cache[name]
+        ins = conn.execute(tbl.insert().values(industry_name=normalized_name))
+        cache[normalized_name] = ins.inserted_primary_key[0]
+        return cache[normalized_name]
 
     def _resolve_metric(self, conn, tbl, name):
         row = conn.execute(
@@ -739,6 +795,13 @@ class FinancialDatabase:
         }
         ins = conn.execute(tbl.insert().values(**vals))
         return ins.inserted_primary_key[0]
+
+    def _normalize_label(self, value: object) -> str | None:
+        text = str(value or "").replace("\xa0", " ").strip()
+        if not text:
+            return None
+        text = re.sub(r"\s+", " ", text)
+        return text or None
 
     def _upsert_security(
         self,

@@ -26,6 +26,9 @@ class PeriodService:
         file_contents: bytes,
         filename: str,
         if_period_exists: str,
+        *,
+        reader: str = "bloomberg",
+        period: str | None = None,
     ) -> dict[str, Any]:
         """
         Create a period from uploaded file contents.
@@ -33,9 +36,15 @@ class PeriodService:
         Raises ValueError for invalid input or import errors.
         """
         if not filename or not filename.lower().endswith((".xlsx", ".xls")):
-            raise ValueError("File must be .xlsx or .xls (Bloomberg Excel format)")
+            raise ValueError("File must be .xlsx or .xls.")
         if if_period_exists not in ("replace", "append"):
             raise ValueError("if_period_exists must be 'replace' or 'append'.")
+        if reader not in ("bloomberg", "reuters_metrics", "auto"):
+            raise ValueError("reader must be 'bloomberg', 'reuters_metrics', or 'auto'.")
+
+        normalized_period = (period or "").strip() or None
+        if reader == "reuters_metrics" and not normalized_period:
+            raise ValueError("period is required when reader='reuters_metrics'.")
 
         tmp_suffix = Path(filename).suffix or ".xlsx"
         with tempfile.NamedTemporaryFile(delete=False, suffix=tmp_suffix) as tmp:
@@ -46,7 +55,8 @@ class PeriodService:
             result = self._importer.import_file(
                 tmp_path,
                 verbose=False,
-                reader="bloomberg",
+                period_override=normalized_period,
+                reader=reader,
                 if_period_exists=if_period_exists,
             )
             return _import_result_to_dict(result)

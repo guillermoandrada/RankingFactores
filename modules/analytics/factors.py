@@ -49,12 +49,15 @@ class FactorScoringService:
             transform_chain=transform_chain,
             out_suffix="_zscore",
         )
+        warnings = list(df_scores.attrs.get("warnings", []))
 
-        return self._run_multistage(
+        result = self._run_multistage(
             df_scores=df_scores,
             direction_map=direction_map,
             profile=profile,
         )
+        result.attrs["warnings"] = warnings
+        return result
 
     def _run_multistage(
         self,

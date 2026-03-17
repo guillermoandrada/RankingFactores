@@ -172,32 +172,35 @@
         "upper": 0.95
       },
       "winsor_mode": "quantile"
-    },
+    }
+  }
+  {
+  "profiles": {
     "Household & Personal Products": {
       "nodes": {
-        "Reuters Factor": {
+        "Reuters": {
           "inputs": {
-            "Reuters Score": 1.0
+            "Reuters": 1.0
           }
         },
         "Profitability": {
           "inputs": {
             "Current Operating Margin": 0.2,
             "Past Operating Margin": 0.05,
-            "Estimated Operating Margin Change": 0.1,
+            "Estimated Operating Margin": 0.1,
             "Current Net Margin": 0.2,
             "Past Net Margin": 0.05,
-            "Estimated Net Margin Change": 0.1,
+            "Estimated Net Margin": 0.1,
             "Current ROA": 0.2,
             "Past ROA": 0.05,
-            "Estimated ROA Change": 0.05
+            "Estimated ROA": 0.05
           }
         },
         "Earnings Quality": {
           "inputs": {
             "Current FCF/Net Income": 0.4,
             "Past FCF/Net Income": 0.1,
-            "Estimated FCF/Net Income Change": 0.25,
+            "Estimated FCF/Net Income": 0.25,
             "Net Income Volatility": 0.25
           }
         },
@@ -225,35 +228,35 @@
           "inputs": {
             "Current Book to Price": 0.5,
             "Past Book to Price": 0.3,
-            "Estimated Book to Price Change": 0.2
+            "Estimated Book to Price": 0.2
           }
         },
         "P/Sales": {
           "inputs": {
             "Current Sales to Price": 0.3,
             "Past Sales to Price": 0.3,
-            "Estimated Sales to Price Change": 0.4
+            "Estimated Sales to Price": 0.4
           }
         },
         "P/Cash Flow": {
           "inputs": {
             "Current CF to Price": 1.0,
             "Past CF to Price": 0.0,
-            "Estimated CF to Price Change": 0.0
+            "Estimated CF to Price": 0.0
           }
         },
         "P/E": {
           "inputs": {
             "Current Earnings Yield": 0.5,
             "Past Earnings Yield": 0.3,
-            "Estimated Earnings Yield Change": 0.2
+            "Estimated Earnings Yield": 0.2
           }
         },
         "EV/EBITDA": {
           "inputs": {
             "Current EBITDA to EV": 0.6,
             "Past EBITDA to EV": 0.3,
-            "Estimated EBITDA to EV Change": 0.1
+            "Estimated EBITDA to EV": 0.1
           }
         },
         "PEG": {
@@ -343,7 +346,7 @@
         },
         "Scoring": {
           "inputs": {
-            "Reuters Factor": 0.65,
+            "Reuters": 0.65,
             "Quality": 0.0,
             "Value": 0.15,
             "Growth": 0.1,
@@ -352,51 +355,50 @@
           }
         }
       }
-    },
+    }
+  }
+},
+{
+  "profiles": {
     "Scoring Cartera US Equities": {
       "nodes": {
-        "Reuters Factor": {
+        "Reuters": {
           "inputs": {
-            "Reuters Score": 1.0
-          },
-          "method": "linear"
+            "Reuters": 1.0
+          }
         },
         "Profitability": {
           "inputs": {
             "Current Operating Margin": 0.2,
             "Past Operating Margin": 0.05,
-            "Estimated Operating Margin Change": 0.1,
+            "Estimated Operating Margin": 0.1,
             "Current Net Margin": 0.2,
             "Past Net Margin": 0.05,
-            "Estimated Net Margin Change": 0.1,
+            "Estimated Net Margin": 0.1,
             "Current ROA": 0.2,
             "Past ROA": 0.05,
-            "Estimated ROA Change": 0.05
-          },
-          "method": "linear"
+            "Estimated ROA": 0.05
+          }
         },
         "Earnings Quality": {
           "inputs": {
             "Current FCF/Net Income": 0.4,
             "Past FCF/Net Income": 0.1,
-            "Estimated FCF/Net Income Change": 0.25,
+            "Estimated FCF/Net Income": 0.25,
             "Net Income Volatility": 0.25
-          },
-          "method": "linear"
+          }
         },
         "Safety": {
           "inputs": {
             "Current Debt/Assets": 0.5,
             "Past Debt/Assets": 0.5
-          },
-          "method": "linear"
+          }
         },
         "Investments": {
           "inputs": {
             "Current ROIC/WACC": 0.5,
             "Past ROIC/WACC": 0.5
-          },
-          "method": "linear"
+          }
         },
         "Quality": {
           "inputs": {
@@ -404,54 +406,47 @@
             "Earnings Quality": 0.3,
             "Safety": 0.2,
             "Investments": 0.2
-          },
-          "method": "linear"
+          }
         },
         "P/B": {
           "inputs": {
             "Current Book to Price": 0.5,
             "Past Book to Price": 0.3,
-            "Estimated Book to Price Change": 0.2
-          },
-          "method": "linear"
+            "Estimated Book to Price": 0.2
+          }
         },
         "P/Sales": {
           "inputs": {
             "Current Sales to Price": 0.3,
             "Past Sales to Price": 0.3,
-            "Estimated Sales to Price Change": 0.4
-          },
-          "method": "linear"
+            "Estimated Sales to Price": 0.4
+          }
         },
         "P/Cash Flow": {
           "inputs": {
             "Current CF to Price": 1.0,
             "Past CF to Price": 0.0,
-            "Estimated CF to Price Change": 0.0
-          },
-          "method": "linear"
+            "Estimated CF to Price": 0.0
+          }
         },
         "P/E": {
           "inputs": {
             "Current Earnings Yield": 0.5,
             "Past Earnings Yield": 0.3,
-            "Estimated Earnings Yield Change": 0.2
-          },
-          "method": "linear"
+            "Estimated Earnings Yield": 0.2
+          }
         },
         "EV/EBITDA": {
           "inputs": {
             "Current EBITDA to EV": 0.6,
             "Past EBITDA to EV": 0.3,
-            "Estimated EBITDA to EV Change": 0.1
-          },
-          "method": "linear"
+            "Estimated EBITDA to EV": 0.1
+          }
         },
         "PEG": {
           "inputs": {
             "Current PEG Ratio": 1.0
-          },
-          "method": "linear"
+          }
         },
         "Value": {
           "inputs": {
@@ -461,36 +456,31 @@
             "P/E": 0.4,
             "EV/EBITDA": 0.2,
             "PEG": 0.1
-          },
-          "method": "linear"
+          }
         },
         "Long Term Growth": {
           "inputs": {
             "Current Long Term Growth": 0.75,
             "Past Long Term Growth": 0.25
-          },
-          "method": "linear"
+          }
         },
         "EPS Growth": {
           "inputs": {
             "Current EPS Growth": 0.75,
             "Past EPS Growth": 0.25
-          },
-          "method": "linear"
+          }
         },
         "Sales Growth": {
           "inputs": {
             "Current Sales Growth": 0.75,
             "Past Sales Growth": 0.25
-          },
-          "method": "linear"
+          }
         },
         "Capex Growth": {
           "inputs": {
             "Current Capex Growth": 0.75,
             "Past Capex Growth": 0.25
-          },
-          "method": "linear"
+          }
         },
         "Growth": {
           "inputs": {
@@ -498,43 +488,37 @@
             "EPS Growth": 0.2,
             "Sales Growth": 0.4,
             "Capex Growth": 0.1
-          },
-          "method": "linear"
+          }
         },
         "Momentum": {
           "inputs": {
             "Target Price / Price": 0.5,
             "Analyst Trend 3M": 0.5
-          },
-          "method": "linear"
+          }
         },
         "Quick Ratio": {
           "inputs": {
             "Current Quick Ratio": 0.6,
             "Past Quick Ratio": 0.4
-          },
-          "method": "linear"
+          }
         },
         "Debt/Equity": {
           "inputs": {
             "Current Debt/Equity": 0.5,
             "Past Debt/Equity": 0.5
-          },
-          "method": "linear"
+          }
         },
         "EBIT/Interest": {
           "inputs": {
             "Current EBIT/Interest": 0.75,
             "Past EBIT/Interest": 0.25
-          },
-          "method": "linear"
+          }
         },
         "Debt/Assets": {
           "inputs": {
             "Current Debt/Assets": 0.75,
             "Past Debt/Assets": 0.25
-          },
-          "method": "linear"
+          }
         },
         "Leverage": {
           "inputs": {
@@ -542,25 +526,20 @@
             "Debt/Equity": 0.2,
             "EBIT/Interest": 0.3,
             "Debt/Assets": 0.4
-          },
-          "method": "linear"
+          }
         },
         "Scoring": {
           "inputs": {
-            "Reuters Factor": 0.65,
+            "Reuters": 0.65,
             "Quality": 0.0,
             "Value": 0.15,
             "Growth": 0.1,
             "Momentum": 0.05,
             "Leverage": 0.05
-          },
-          "method": "linear"
+          }
         }
-      },
-      "normalization": "normalized_zscore",
-      "winsorization": false,
-      "winsor_mode": "quantile",
-      "method": "linear"
+      }
     }
   }
+}
 }

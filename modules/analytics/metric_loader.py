@@ -39,7 +39,7 @@ def _apply_na_handling(
         handling = na_handling_map.get(col)
         if not handling or handling == "eliminate":
             continue
-        ser = out[col]
+        ser = pd.to_numeric(out[col], errors="coerce")
         if handling == "replace_with_zero":
             out = out.assign(**{col: ser.fillna(0.0)})
         elif handling == "replace_with_high":
@@ -155,6 +155,19 @@ def fetch_metric_matrix(
     ).sort_index()
     df_wide.columns = [str(c) for c in df_wide.columns]
 
+    for name in base_to_fetch:
+        if name not in df_wide.columns:
+            df_wide[name] = pd.NA
+
+    missing_metrics: set[str] = set()
+    for name in base_to_fetch:
+        if name not in df_wide.columns:
+            missing_metrics.add(name)
+            continue
+        series = pd.to_numeric(df_wide[name], errors="coerce")
+        if series.isna().all():
+            missing_metrics.add(name)
+
     # Compute derived metrics in dependency order
     for name in all_to_fetch:
         if name in base_names:
@@ -165,6 +178,10 @@ def fetch_metric_matrix(
         m_names = formula["metric_names"]
         ops = formula["operations"]
         df_wide[name] = _compute_derived(df_wide, m_names, ops)
+        if pd.to_numeric(df_wide[name], errors="coerce").isna().all():
+            missing_metrics.add(name)
+        elif name in missing_metrics:
+            missing_metrics.remove(name)
         hib = formula.get("higher_is_better")
         direction_map[name] = bool(hib) if hib is not None else True
 
@@ -185,6 +202,7 @@ def fetch_metric_matrix(
 
     # Apply per-metric NA handling (eliminate drops rows, others fill)
     df_wide = _apply_na_handling(df_wide, na_handling_map, all_to_fetch)
+    df_wide.attrs["missing_metrics"] = sorted(missing_metrics)
 
     return df_wide, direction_map
 

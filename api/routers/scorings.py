@@ -32,6 +32,7 @@ async def compute_period_scoring_batch(period: str, request: BatchScoringBody):
                 sector=scope_item.sector or "",
                 scoring_profile=profile_name,
             )
+            warnings = list(df_ranked.attrs.get("warnings", []))
             records = json.loads(df_ranked.to_json(orient="records", date_format="iso"))
             return scope_key, {
                 "period": period,
@@ -39,6 +40,7 @@ async def compute_period_scoring_batch(period: str, request: BatchScoringBody):
                 "sector": scope_item.sector.strip() or None,
                 "scoring_profile": profile_name,
                 "count": len(records),
+                "warnings": warnings,
                 "ranking": records,
             }
         except (ValueError, KeyError) as exc:
@@ -75,6 +77,7 @@ async def compute_period_scoring(period: str, request: ComputePeriodScoringBody)
             index=request.index,
             scoring_profile=request.scoring_profile,
         )
+        warnings = list(df_ranked.attrs.get("warnings", []))
         records = json.loads(
             df_ranked.to_json(orient="records", date_format="iso")
         )
@@ -94,6 +97,7 @@ async def compute_period_scoring(period: str, request: ComputePeriodScoringBody)
             "sector": request.sector.strip() or None,
             "scoring_profile": request.scoring_profile,
             "count": len(records),
+            "warnings": warnings,
             "ranking": records,
         }
     except (ValueError, KeyError) as exc:

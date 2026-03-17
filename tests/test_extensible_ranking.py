@@ -4,12 +4,14 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from fastapi.testclient import TestClient
 
 import api.main as api_main
 import api.routers.metrics as metrics_router
 import api.routers.scoring_profiles as scoring_profiles_router
 import api.routers.scorings as scorings_router
+from api.services.ranking_service import _apply_display_labels
 from modules.analytics.ranking import RankingEngine
 from modules.analytics.transforms import build_default_transform_registry
 from modules.config.ranking_profiles import RankingProfileResolver, RankingProfileStore
@@ -82,8 +84,11 @@ def test_export_endpoint_returns_valid_xlsx(monkeypatch) -> None:
         def list_periods(self):
             return ["2023 Q3"]
 
+    def _fake_db():
+        return FakeDB()
+
     monkeypatch.setattr(scorings_router, "compute_ranking", _fake_compute)
-    monkeypatch.setattr(scorings_router, "get_db", lambda: FakeDB())
+    monkeypatch.setattr(scorings_router, "get_db", _fake_db)
     client = TestClient(api_main.app)
 
     response = client.post(
@@ -115,8 +120,11 @@ def test_compute_period_scoring_endpoint(monkeypatch) -> None:
         def list_periods(self):
             return ["2023 Q3"]
 
+    def _fake_db():
+        return FakeDB()
+
     monkeypatch.setattr(scorings_router, "compute_ranking", _fake_compute)
-    monkeypatch.setattr(scorings_router, "get_db", lambda: FakeDB())
+    monkeypatch.setattr(scorings_router, "get_db", _fake_db)
     client = TestClient(api_main.app)
 
     response = client.post(
@@ -135,6 +143,19 @@ def test_compute_period_scoring_endpoint(monkeypatch) -> None:
     assert payload["scoring_profile"] == "quality_scoring"
 
 
+def test_apply_display_labels_rejects_duplicate_display_names() -> None:
+    df = pd.DataFrame(
+        {
+            "ticker": ["AAA"],
+            "Reuters Score": [10.0],
+            "Reuters Factor_zscore": [1.5],
+        }
+    ).rename(columns={"Reuters Factor_zscore": "Reuters_zscore"})
+
+    with pytest.raises(ValueError, match="duplicate display columns: Reuters Score"):
+        _apply_display_labels(df)
+
+
 def test_metric_operation_endpoint(monkeypatch) -> None:
     class _FakeDerivedStore:
         def upsert_formula(self, **kwargs):
@@ -144,7 +165,10 @@ def test_metric_operation_endpoint(monkeypatch) -> None:
                 "operations": kwargs["operations"],
             }
 
-    monkeypatch.setattr(metrics_router, "get_derived_store", lambda: _FakeDerivedStore())
+    def _fake_derived_store():
+        return _FakeDerivedStore()
+
+    monkeypatch.setattr(metrics_router, "get_derived_store", _fake_derived_store)
     client = TestClient(api_main.app)
 
     response = client.post(

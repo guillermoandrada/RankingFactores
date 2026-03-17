@@ -22,11 +22,13 @@ def _targets_from_editor(df: pd.DataFrame) -> dict[str, float]:
     if df.empty:
         return result
     for _, row in df.iterrows():
+        if not bool(row.get("enabled", False)):
+            continue
         group = str(row.get("group") or "").strip()
         if not group:
             continue
         try:
-            weight = float(row.get("weight") or 0.0)
+            weight = float(row.get("weight") or 0.0) / 100.0
         except (TypeError, ValueError):
             continue
         result[group] = weight
@@ -44,6 +46,101 @@ def _positions_to_rows(positions) -> list[dict[str, Any]]:
             "name": position.name,
         })
     return rows
+
+
+def _prefilled_targets(options: list[str]) -> pd.DataFrame:
+    return pd.DataFrame(
+        [{"enabled": False, "group": option, "weight": 0.0} for option in sorted(options)],
+        columns=["enabled", "group", "weight"],
+    )
+
+
+def _ensure_targets_state(state_key: str, options: list[str]) -> pd.DataFrame:
+    expected = _prefilled_targets(options)
+    current = st.session_state.get(state_key)
+    if not isinstance(current, pd.DataFrame):
+        st.session_state[state_key] = expected
+        return expected
+
+    current_map = {
+        str(row.get("group") or "").strip(): row
+        for _, row in current.iterrows()
+        if str(row.get("group") or "").strip()
+    }
+    rows: list[dict[str, Any]] = []
+    for group in expected["group"].tolist():
+        existing = current_map.get(group, {})
+        rows.append({
+            "enabled": bool(existing.get("enabled", False)),
+            "group": group,
+            "weight": float(existing.get("weight", 0.0) or 0.0),
+        })
+    refreshed = pd.DataFrame(rows, columns=["enabled", "group", "weight"])
+    st.session_state[state_key] = refreshed
+    return refreshed
+
+
+def _set_all_targets_enabled(state_key: str, enabled: bool) -> None:
+    current = st.session_state.get(state_key)
+    if not isinstance(current, pd.DataFrame) or current.empty:
+        return
+    updated = current.copy()
+    updated["enabled"] = enabled
+    st.session_state[state_key] = updated
+
+
+def _percent_input(
+    label: str,
+    *,
+    value: float,
+    step: float = 0.01,
+    min_value: float | None = 0.0,
+    max_value: float | None = None,
+    key: str | None = None,
+    help_text: str | None = None,
+) -> float:
+    min_percent = None if min_value is None else min_value * 100.0
+    max_percent = None if max_value is None else max_value * 100.0
+    raw_value = st.number_input(
+        f"{label} (%)",
+        min_value=min_percent,
+        max_value=max_percent,
+        value=value * 100.0,
+        step=step * 100.0,
+        format="%.2f",
+        key=key,
+        help=help_text,
+    )
+    return float(raw_value) / 100.0
+
+
+def _percentage_column_config(columns: list[str]) -> dict[str, Any]:
+    return {
+        column: st.column_config.NumberColumn(
+            column,
+            format="%.2f%%",
+        )
+        for column in columns
+    }
+
+
+def _display_percent_dataframe(
+    df: pd.DataFrame,
+    percent_columns: list[str],
+) -> None:
+    if df.empty:
+        st.dataframe(df, use_container_width=True)
+        return
+
+    display_df = df.copy()
+    active_columns = [column for column in percent_columns if column in display_df.columns]
+    for column in active_columns:
+        display_df[column] = pd.to_numeric(display_df[column], errors="coerce") * 100.0
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        column_config=_percentage_column_config(active_columns),
+    )
 
 
 st.set_page_config(page_title="Portfolio Construction", layout="wide")
@@ -176,26 +273,81 @@ with st.container(border=True):
             st.error(f"Could not parse ethical filter workbook: {exc}")
 
 st.divider()
-col_targets_1, col_targets_2 = st.columns(2)
-with col_targets_1:
-    st.markdown("**Sector targets**")
-    sector_targets_df = st.data_editor(
-        pd.DataFrame(columns=["group", "weight"]),
-        num_rows="dynamic",
-        key="portfolio_sector_targets",
-        use_container_width=True,
+with st.container(border=True):
+    st.markdown("**Constraint targets**")
+    constraint_type = st.radio(
+        "Constraint type",
+        options=["none", "sector", "industry"],
+        horizontal=True,
+        key="portfolio_constraint_type",
+        format_func=lambda value: {
+            "none": "None",
+            "sector": "Sector restrictions",
+            "industry": "Industry restrictions",
+        }[value],
     )
-with col_targets_2:
-    st.markdown("**Industry targets**")
-    industry_targets_df = st.data_editor(
-        pd.DataFrame(columns=["group", "weight"]),
-        num_rows="dynamic",
-        key="portfolio_industry_targets",
-        use_container_width=True,
+    st.caption(
+        "Enable rows you want to constrain. Enabled rows with weight `0.0` mean no new buys for that group. "
+        "Disabled rows are treated as unrestricted."
     )
 
-sector_targets = _targets_from_editor(sector_targets_df)
-industry_targets = _targets_from_editor(industry_targets_df)
+    sector_targets_df = pd.DataFrame(columns=["enabled", "group", "weight"])
+    industry_targets_df = pd.DataFrame(columns=["enabled", "group", "weight"])
+    if constraint_type == "sector":
+        st.markdown("**Sector targets**")
+        sector_state_key = "portfolio_sector_targets_df"
+        _ensure_targets_state(sector_state_key, sectors)
+        sector_button_col1, sector_button_col2 = st.columns(2)
+        with sector_button_col1:
+            if st.button("Enable all sector restrictions", key="portfolio_sector_targets_enable_all"):
+                _set_all_targets_enabled(sector_state_key, True)
+                st.rerun()
+        with sector_button_col2:
+            if st.button("Disable all sector restrictions", key="portfolio_sector_targets_disable_all"):
+                _set_all_targets_enabled(sector_state_key, False)
+                st.rerun()
+        sector_targets_df = st.data_editor(
+            st.session_state[sector_state_key],
+            num_rows="fixed",
+            key="portfolio_sector_targets",
+            use_container_width=True,
+            disabled=["group"],
+            column_config={
+                "enabled": st.column_config.CheckboxColumn("enabled"),
+                "group": st.column_config.TextColumn("group"),
+                "weight": st.column_config.NumberColumn("weight (%)", format="%.2f"),
+            },
+        )
+        st.session_state[sector_state_key] = sector_targets_df
+    elif constraint_type == "industry":
+        st.markdown("**Industry targets**")
+        industry_state_key = "portfolio_industry_targets_df"
+        _ensure_targets_state(industry_state_key, industries)
+        industry_button_col1, industry_button_col2 = st.columns(2)
+        with industry_button_col1:
+            if st.button("Enable all industry restrictions", key="portfolio_industry_targets_enable_all"):
+                _set_all_targets_enabled(industry_state_key, True)
+                st.rerun()
+        with industry_button_col2:
+            if st.button("Disable all industry restrictions", key="portfolio_industry_targets_disable_all"):
+                _set_all_targets_enabled(industry_state_key, False)
+                st.rerun()
+        industry_targets_df = st.data_editor(
+            st.session_state[industry_state_key],
+            num_rows="fixed",
+            key="portfolio_industry_targets",
+            use_container_width=True,
+            disabled=["group"],
+            column_config={
+                "enabled": st.column_config.CheckboxColumn("enabled"),
+                "group": st.column_config.TextColumn("group"),
+                "weight": st.column_config.NumberColumn("weight (%)", format="%.2f"),
+            },
+        )
+        st.session_state[industry_state_key] = industry_targets_df
+
+sector_targets = _targets_from_editor(sector_targets_df) if constraint_type == "sector" else {}
+industry_targets = _targets_from_editor(industry_targets_df) if constraint_type == "industry" else {}
 
 st.divider()
 with st.container(border=True):
@@ -210,21 +362,58 @@ with st.container(border=True):
         "capital_base": float(capital_base),
         "current_holdings": holdings_rows,
         "ethical_filter_rows": ethical_filter_rows,
+        "constraint_type": constraint_type,
         "sector_targets": sector_targets,
         "industry_targets": industry_targets,
     }
 
     if strategy == "legacy_rebalance":
         c1, c2, c3, c4 = st.columns(4)
-        body["max_position"] = c1.number_input("Max position", min_value=0.0, value=0.05, step=0.01)
-        body["neutral_position"] = c2.number_input("Neutral position", min_value=0.0, value=0.03, step=0.01)
-        body["score_quantile_cutoff"] = c3.number_input("Score quantile cutoff", min_value=0.0, max_value=1.0, value=0.5, step=0.05)
-        body["min_trade_weight"] = c4.number_input("Min trade weight", min_value=0.0, value=0.0, step=0.001)
+        with c1:
+            body["max_position"] = _percent_input(
+                "Max position",
+                min_value=0.0,
+                value=0.05,
+                step=0.01,
+                key="portfolio_max_position_pct",
+            )
+        with c2:
+            body["neutral_position"] = _percent_input(
+                "Neutral position",
+                min_value=0.0,
+                value=0.03,
+                step=0.01,
+                key="portfolio_neutral_position_pct",
+            )
+        with c3:
+            body["score_quantile_cutoff"] = _percent_input(
+                "Score quantile cutoff",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.5,
+                step=0.05,
+                key="portfolio_score_quantile_cutoff_pct",
+            )
+        with c4:
+            body["min_trade_weight"] = _percent_input(
+                "Min trade weight",
+                min_value=0.0,
+                value=0.0,
+                step=0.001,
+                key="portfolio_min_trade_weight_pct",
+            )
     elif strategy == "smart_beta":
         c1, c2 = st.columns(2)
         top_n = c1.number_input("Top N (0 = all)", min_value=0, value=0, step=1)
         body["top_n"] = int(top_n) or None
-        body["smart_beta_max_weight"] = c2.number_input("Max weight", min_value=0.0, value=0.10, step=0.01)
+        with c2:
+            body["smart_beta_max_weight"] = _percent_input(
+                "Max weight",
+                min_value=0.0,
+                value=0.10,
+                step=0.01,
+                key="portfolio_smart_beta_max_weight_pct",
+            )
     else:
         c1, c2, c3 = st.columns(3)
         body["bucket_count"] = int(c1.number_input("Bucket count", min_value=2, value=10, step=1))
@@ -232,8 +421,22 @@ with st.container(border=True):
         body["short_bucket_count"] = int(c3.number_input("Short bucket count", min_value=1, value=1, step=1))
         c4, c5, c6 = st.columns(3)
         body["long_short_weighting"] = c4.selectbox("Weighting", ["equal", "score"])
-        body["gross_exposure"] = c5.number_input("Gross exposure", min_value=0.0, value=1.0, step=0.1)
-        body["net_exposure"] = c6.number_input("Net exposure", value=0.0, step=0.1)
+        with c5:
+            body["gross_exposure"] = _percent_input(
+                "Gross exposure",
+                min_value=0.0,
+                value=1.0,
+                step=0.1,
+                key="portfolio_gross_exposure_pct",
+            )
+        with c6:
+            body["net_exposure"] = _percent_input(
+                "Net exposure",
+                min_value=None,
+                value=0.0,
+                step=0.1,
+                key="portfolio_net_exposure_pct",
+            )
 
 run_clicked = st.button("Build portfolio", type="primary", key="portfolio_run")
 if run_clicked:
@@ -259,11 +462,20 @@ if portfolio_result:
         ["Portfolio", "Current", "Trades", "Diagnostics", "Raw JSON"]
     )
     with tab1:
-        st.dataframe(pd.DataFrame(portfolio_result.get("portfolio", [])), use_container_width=True)
+        _display_percent_dataframe(
+            pd.DataFrame(portfolio_result.get("portfolio", [])),
+            ["current_weight", "target_weight"],
+        )
     with tab2:
-        st.dataframe(pd.DataFrame(portfolio_result.get("current_portfolio", [])), use_container_width=True)
+        _display_percent_dataframe(
+            pd.DataFrame(portfolio_result.get("current_portfolio", [])),
+            ["weight"],
+        )
     with tab3:
-        st.dataframe(pd.DataFrame(portfolio_result.get("trades", [])), use_container_width=True)
+        _display_percent_dataframe(
+            pd.DataFrame(portfolio_result.get("trades", [])),
+            ["weight_delta", "current_weight", "target_weight"],
+        )
     with tab4:
         st.markdown("**Excluded**")
         st.dataframe(pd.DataFrame(portfolio_result.get("excluded", [])), use_container_width=True)
@@ -272,10 +484,16 @@ if portfolio_result:
         industry_diag = portfolio_result.get("constraint_diagnostics", {}).get("industry", [])
         if sector_diag:
             st.caption("Sector")
-            st.dataframe(pd.DataFrame(sector_diag), use_container_width=True)
+            _display_percent_dataframe(
+                pd.DataFrame(sector_diag),
+                ["target_weight", "actual_weight", "difference"],
+            )
         if industry_diag:
             st.caption("Industry")
-            st.dataframe(pd.DataFrame(industry_diag), use_container_width=True)
+            _display_percent_dataframe(
+                pd.DataFrame(industry_diag),
+                ["target_weight", "actual_weight", "difference"],
+            )
         notes = portfolio_result.get("notes", [])
         if notes:
             st.markdown("**Notes**")

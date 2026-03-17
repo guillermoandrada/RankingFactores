@@ -48,10 +48,18 @@ class RankingApiClient:
         file_content: bytes,
         filename: str,
         if_period_exists: str = "replace",
+        *,
+        reader: str = "bloomberg",
+        period: str | None = None,
     ) -> dict[str, Any]:
-        """Create period from uploaded Bloomberg Excel file. if_period_exists: replace|append."""
+        """Create period from uploaded file using the selected reader."""
         url = f"{self.base_url.rstrip('/')}/periods"
-        params = {"if_period_exists": if_period_exists}
+        params: dict[str, Any] = {
+            "if_period_exists": if_period_exists,
+            "reader": reader,
+        }
+        if period:
+            params["period"] = period
         files = {"file": (filename, file_content)}
         with httpx.Client(timeout=self.timeout_seconds) as client:
             response = client.post(url, params=params, files=files)
