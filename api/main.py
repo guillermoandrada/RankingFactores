@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from api.routers.backtests import router as backtests_router
 from api.routers.db_metrics import router as db_metrics_router
 from api.routers.metrics import router as metrics_router
 from api.routers.portfolios import router as portfolios_router
@@ -22,6 +23,7 @@ app.include_router(metrics_router)
 app.include_router(db_metrics_router)
 app.include_router(periods_router)
 app.include_router(portfolios_router)
+app.include_router(backtests_router)
 app.include_router(scorings_router)
 app.include_router(reference_router)
 app.include_router(scoring_profiles_router)

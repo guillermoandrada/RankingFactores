@@ -19,4 +19,5 @@ Select a page from the **sidebar** in workflow order:
 4. **Scoring Profiles** — Edit and manage saved scoring profiles.
 5. **Ranking** — Run rankings for a period and profile, export results.
 6. **Portfolio Construction** — Build or rebalance portfolios from ranking output.
+7. **Strategy Backtest** — Rebuild portfolios across manual date windows and compare performance versus a benchmark.
 """)

@@ -175,7 +175,7 @@ with tabs[1]:
             st.markdown("**Edit values in the table, then click Save changes.**")
             edited_df = st.data_editor(
                 df,
-                use_container_width=True,
+                width="stretch",
                 key="period_data_editor",
                 num_rows="fixed",
             )

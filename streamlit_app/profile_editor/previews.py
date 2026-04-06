@@ -52,7 +52,7 @@ def render_previews(
     with tab1:
         dot = _build_dot(nodes, root_id)
         try:
-            st.graphviz_chart(dot, use_container_width=True)
+            st.graphviz_chart(dot, width="stretch")
         except Exception:
             st.code(dot, language="dot")
     with tab2:

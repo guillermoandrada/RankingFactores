@@ -57,8 +57,10 @@ def build_long_short_portfolio(
     long_selection = eligible[: bucket_size * long_bucket_count]
     short_selection = eligible[-bucket_size * short_bucket_count :]
 
-    long_total = max(0.0, (gross_exposure + net_exposure) / 2.0)
-    short_total = max(0.0, (gross_exposure - net_exposure) / 2.0)
+    # Treat gross_exposure as the baseline exposure for each leg so the
+    # default market-neutral book is +100% long / -100% short.
+    long_total = max(0.0, gross_exposure + (net_exposure / 2.0))
+    short_total = max(0.0, gross_exposure - (net_exposure / 2.0))
 
     long_weights = _side_weights(long_selection, long_total, weighting)
     short_weights = _side_weights(short_selection, short_total, weighting)
@@ -83,7 +85,8 @@ def build_long_short_portfolio(
         if abs(weight) > 0
     ]
     diagnostics.notes.append(
-        f"Long/short built with {bucket_count} buckets, weighting={weighting}."
+        f"Long/short built with {bucket_count} buckets, weighting={weighting}, "
+        f"long_exposure={round(long_total, 6)}, short_exposure={round(short_total, 6)}."
     )
     return positions, diagnostics
 

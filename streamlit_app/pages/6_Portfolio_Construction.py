@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+import hashlib
+from datetime import date, timedelta
 from typing import Any
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
+from modules.market_data import fetch_latest_adjusted_closes
 from modules.portfolio import parse_ethical_filter_excel, parse_holdings_excel
+from modules.portfolio.input_parsers import normalize_ticker
 from streamlit_app.api_client import ApiError
+from streamlit_app.constraint_targets import (
+    render_constraint_target_fields,
+    set_all_targets_enabled,
+    targets_from_dataframe,
+)
 from streamlit_app.ui import (
     get_api_client,
     inject_custom_css,
@@ -16,23 +26,8 @@ from streamlit_app.ui import (
     render_sidebar_api_test,
 )
 
-
-def _targets_from_editor(df: pd.DataFrame) -> dict[str, float]:
-    result: dict[str, float] = {}
-    if df.empty:
-        return result
-    for _, row in df.iterrows():
-        if not bool(row.get("enabled", False)):
-            continue
-        group = str(row.get("group") or "").strip()
-        if not group:
-            continue
-        try:
-            weight = float(row.get("weight") or 0.0) / 100.0
-        except (TypeError, ValueError):
-            continue
-        result[group] = weight
-    return result
+_PORTFOLIO_HOLDINGS_CACHE_KEY = "portfolio_holdings_rows_cache"
+_PORTFOLIO_HOLDINGS_SIG_KEY = "portfolio_holdings_content_sig"
 
 
 def _positions_to_rows(positions) -> list[dict[str, Any]]:
@@ -48,45 +43,24 @@ def _positions_to_rows(positions) -> list[dict[str, Any]]:
     return rows
 
 
-def _prefilled_targets(options: list[str]) -> pd.DataFrame:
-    return pd.DataFrame(
-        [{"enabled": False, "group": option, "weight": 0.0} for option in sorted(options)],
-        columns=["enabled", "group", "weight"],
-    )
-
-
-def _ensure_targets_state(state_key: str, options: list[str]) -> pd.DataFrame:
-    expected = _prefilled_targets(options)
-    current = st.session_state.get(state_key)
-    if not isinstance(current, pd.DataFrame):
-        st.session_state[state_key] = expected
-        return expected
-
-    current_map = {
-        str(row.get("group") or "").strip(): row
-        for _, row in current.iterrows()
-        if str(row.get("group") or "").strip()
-    }
-    rows: list[dict[str, Any]] = []
-    for group in expected["group"].tolist():
-        existing = current_map.get(group, {})
-        rows.append({
-            "enabled": bool(existing.get("enabled", False)),
-            "group": group,
-            "weight": float(existing.get("weight", 0.0) or 0.0),
-        })
-    refreshed = pd.DataFrame(rows, columns=["enabled", "group", "weight"])
-    st.session_state[state_key] = refreshed
-    return refreshed
-
-
-def _set_all_targets_enabled(state_key: str, enabled: bool) -> None:
-    current = st.session_state.get(state_key)
-    if not isinstance(current, pd.DataFrame) or current.empty:
-        return
-    updated = current.copy()
-    updated["enabled"] = enabled
-    st.session_state[state_key] = updated
+def _merge_yfinance_prices_into_holdings_rows(
+    rows: list[dict[str, Any]],
+    closes: dict[str, float],
+) -> list[dict[str, Any]]:
+    """Apply Yahoo Finance closes; skip cash rows; recompute market_value as quantity * price."""
+    merged: list[dict[str, Any]] = []
+    for row in rows:
+        ticker_key = normalize_ticker(row.get("ticker"))
+        if ticker_key == "CASH_USD":
+            merged.append(dict(row))
+            continue
+        if ticker_key in closes:
+            quantity = float(row.get("quantity") or 0.0)
+            price = closes[ticker_key]
+            merged.append({**dict(row), "price": price, "market_value": quantity * price})
+        else:
+            merged.append(dict(row))
+    return merged
 
 
 def _percent_input(
@@ -124,23 +98,172 @@ def _percentage_column_config(columns: list[str]) -> dict[str, Any]:
     }
 
 
+def _value_column_config(columns: list[str]) -> dict[str, Any]:
+    return {
+        column: st.column_config.NumberColumn(column, format="%.1f")
+        for column in columns
+    }
+
+
 def _display_percent_dataframe(
     df: pd.DataFrame,
     percent_columns: list[str],
+    *,
+    value_columns: list[str] | None = None,
 ) -> None:
     if df.empty:
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width="stretch")
         return
 
     display_df = df.copy()
-    active_columns = [column for column in percent_columns if column in display_df.columns]
-    for column in active_columns:
+    active_percent = [c for c in percent_columns if c in display_df.columns]
+    active_value = [c for c in (value_columns or []) if c in display_df.columns]
+    for column in active_percent:
         display_df[column] = pd.to_numeric(display_df[column], errors="coerce") * 100.0
+
+    column_config = {**_percentage_column_config(active_percent), **_value_column_config(active_value)}
     st.dataframe(
         display_df,
-        use_container_width=True,
-        column_config=_percentage_column_config(active_columns),
+        width="stretch",
+        column_config=column_config or None,
     )
+
+
+def _format_metric_value(value: Any, *, percent: bool = False) -> str:
+    if value is None or pd.isna(value):
+        return "-"
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    return f"{numeric:.2%}" if percent else f"{numeric:,.1f}"
+
+
+def _render_component_returns(components: list[dict[str, Any]]) -> None:
+    if not components:
+        return
+    st.markdown("**Component total returns**")
+    component_df = pd.DataFrame(components)
+    preferred_columns = [
+        "ticker",
+        "name",
+        "sector",
+        "industry",
+        "target_weight",
+        "resolved_ticker",
+        "start_price",
+        "end_price",
+        "total_return",
+        "status",
+    ]
+    available_columns = [column for column in preferred_columns if column in component_df.columns]
+    _display_percent_dataframe(
+        component_df[available_columns],
+        ["target_weight", "total_return"],
+        value_columns=["start_price", "end_price"],
+    )
+
+
+def _render_backtest_chart(series_df: pd.DataFrame) -> None:
+    if series_df.empty or "date" not in series_df.columns:
+        return
+    value_columns = [
+        column
+        for column in ["portfolio_value", "benchmark_value"]
+        if column in series_df.columns
+    ]
+    if not value_columns:
+        return
+
+    chart_df = series_df[["date", *value_columns]].melt(
+        id_vars="date",
+        value_vars=value_columns,
+        var_name="series",
+        value_name="value",
+    )
+    chart_df["series"] = chart_df["series"].map(
+        {
+            "portfolio_value": "Portfolio value",
+            "benchmark_value": "Benchmark value",
+        }
+    ).fillna(chart_df["series"])
+
+    chart = (
+        alt.Chart(chart_df)
+        .mark_line()
+        .encode(
+            x=alt.X("date:T", title="Date"),
+            y=alt.Y("value:Q", title="Value", scale=alt.Scale(zero=False)),
+            color=alt.Color("series:N", title="Series"),
+            tooltip=[
+                alt.Tooltip("date:T", title="Date"),
+                alt.Tooltip("series:N", title="Series"),
+                alt.Tooltip("value:Q", title="Value", format=",.2f"),
+            ],
+        )
+    )
+    st.altair_chart(chart, width="stretch")
+
+
+def _render_backtest_result(result: dict[str, Any]) -> None:
+    backtest_summary = result.get("summary", {})
+    metrics_cols = st.columns(4)
+    metrics_cols[0].metric(
+        "Total return",
+        _format_metric_value(backtest_summary.get("total_return"), percent=True),
+    )
+    metrics_cols[1].metric(
+        "Annualized return",
+        _format_metric_value(backtest_summary.get("annualized_return"), percent=True),
+    )
+    metrics_cols[2].metric(
+        "Volatility",
+        _format_metric_value(backtest_summary.get("volatility"), percent=True),
+    )
+    metrics_cols[3].metric(
+        "Max drawdown",
+        _format_metric_value(backtest_summary.get("max_drawdown"), percent=True),
+    )
+
+    series_df = pd.DataFrame(result.get("series", []))
+    if not series_df.empty and "date" in series_df.columns:
+        series_df["date"] = pd.to_datetime(series_df["date"])
+        _render_backtest_chart(series_df)
+        series_df = series_df.set_index("date")
+        display_columns = [
+            column
+            for column in [
+                "portfolio_value",
+                "portfolio_return",
+                "portfolio_cumulative",
+                "benchmark_value",
+                "benchmark_return",
+                "benchmark_cumulative",
+                "excess_return",
+                "relative_cumulative",
+            ]
+            if column in series_df.columns
+        ]
+        _display_percent_dataframe(
+            series_df.reset_index()[["date", *display_columns]],
+            [
+                "portfolio_return",
+                "portfolio_cumulative",
+                "benchmark_return",
+                "benchmark_cumulative",
+                "excess_return",
+                "relative_cumulative",
+            ],
+            value_columns=["portfolio_value", "benchmark_value"],
+        )
+
+    warnings = result.get("warnings", [])
+    if warnings:
+        st.markdown("**Warnings**")
+        for warning in warnings:
+            st.warning(warning)
+
+    _render_component_returns(result.get("components", []))
 
 
 st.set_page_config(page_title="Portfolio Construction", layout="wide")
@@ -232,7 +355,8 @@ if construction_mode == "rebalance_existing":
     with st.container(border=True):
         st.markdown("**Current portfolio input**")
         st.caption(
-            "Upload the legacy-style holdings workbook. If price or market value is missing, the rebalance API may reject the request."
+            "Upload the legacy-style holdings workbook. If price or market value is missing, use "
+            "**Fetch latest prices (Yahoo Finance)** or the rebalance API may reject the request."
         )
         holdings_file = st.file_uploader(
             "Current holdings workbook",
@@ -241,15 +365,67 @@ if construction_mode == "rebalance_existing":
         )
         if holdings_file:
             try:
-                parsed_positions, _cash = parse_holdings_excel(holdings_file.read())
-                holdings_rows = _positions_to_rows(parsed_positions)
-                st.dataframe(pd.DataFrame(holdings_rows), use_container_width=True)
-                if holdings_rows and all(row.get("price") in (None, "") and row.get("market_value") in (None, "") for row in holdings_rows):
+                file_bytes = holdings_file.read()
+                content_sig = hashlib.sha256(file_bytes).hexdigest()
+                if st.session_state.get(_PORTFOLIO_HOLDINGS_SIG_KEY) != content_sig:
+                    parsed_positions, _cash = parse_holdings_excel(file_bytes)
+                    holdings_rows = _positions_to_rows(parsed_positions)
+                    st.session_state[_PORTFOLIO_HOLDINGS_CACHE_KEY] = holdings_rows
+                    st.session_state[_PORTFOLIO_HOLDINGS_SIG_KEY] = content_sig
+                else:
+                    holdings_rows = list(st.session_state.get(_PORTFOLIO_HOLDINGS_CACHE_KEY, []))
+
+                st.dataframe(pd.DataFrame(holdings_rows), width="stretch")
+
+                fetch_disabled = not holdings_rows
+                if st.button(
+                    "Fetch latest prices (Yahoo Finance)",
+                    key="portfolio_fetch_yf_prices",
+                    disabled=fetch_disabled,
+                    help="Loads the latest adjusted closes from Yahoo Finance and fills price and market value.",
+                ):
+                    tickers = [
+                        normalize_ticker(row.get("ticker"))
+                        for row in holdings_rows
+                        if normalize_ticker(row.get("ticker")) not in ("", "CASH_USD")
+                    ]
+                    if not tickers:
+                        st.warning("No equity tickers to price (only cash or empty rows).")
+                    else:
+                        try:
+                            price_result = fetch_latest_adjusted_closes(tickers)
+                            updated = _merge_yfinance_prices_into_holdings_rows(
+                                holdings_rows,
+                                price_result.closes,
+                            )
+                            st.session_state[_PORTFOLIO_HOLDINGS_CACHE_KEY] = updated
+                            holdings_rows = updated
+                            if price_result.missing_identifiers:
+                                st.warning(
+                                    "No Yahoo Finance close for: "
+                                    + ", ".join(sorted(price_result.missing_identifiers))
+                                )
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Could not fetch prices: {exc}")
+
+                equity_holdings = [
+                    row
+                    for row in holdings_rows
+                    if normalize_ticker(row.get("ticker")) not in ("", "CASH_USD")
+                ]
+                if equity_holdings and all(
+                    row.get("price") in (None, "") and row.get("market_value") in (None, "")
+                    for row in equity_holdings
+                ):
                     st.warning(
-                        "Uploaded holdings do not include price or market value. Rebalance mode needs valuation data to compute current weights."
+                        "Equity rows still lack price or market value. Fetch prices above or add them in the workbook."
                     )
             except (ValueError, KeyError, OSError) as exc:
                 st.error(f"Could not parse holdings workbook: {exc}")
+        else:
+            st.session_state.pop(_PORTFOLIO_HOLDINGS_CACHE_KEY, None)
+            st.session_state.pop(_PORTFOLIO_HOLDINGS_SIG_KEY, None)
 
 ethical_filter_rows: list[dict[str, Any]] = []
 with st.container(border=True):
@@ -268,7 +444,7 @@ with st.container(border=True):
             ]
             st.caption(f"Blocked tickers loaded: {len(ethical_filter_rows)}")
             if ethical_filter_rows:
-                st.dataframe(pd.DataFrame(ethical_filter_rows), use_container_width=True)
+                st.dataframe(pd.DataFrame(ethical_filter_rows), width="stretch")
         except (ValueError, KeyError, OSError) as exc:
             st.error(f"Could not parse ethical filter workbook: {exc}")
 
@@ -296,58 +472,40 @@ with st.container(border=True):
     if constraint_type == "sector":
         st.markdown("**Sector targets**")
         sector_state_key = "portfolio_sector_targets_df"
-        _ensure_targets_state(sector_state_key, sectors)
         sector_button_col1, sector_button_col2 = st.columns(2)
         with sector_button_col1:
             if st.button("Enable all sector restrictions", key="portfolio_sector_targets_enable_all"):
-                _set_all_targets_enabled(sector_state_key, True)
+                set_all_targets_enabled(sector_state_key, True)
                 st.rerun()
         with sector_button_col2:
             if st.button("Disable all sector restrictions", key="portfolio_sector_targets_disable_all"):
-                _set_all_targets_enabled(sector_state_key, False)
+                set_all_targets_enabled(sector_state_key, False)
                 st.rerun()
-        sector_targets_df = st.data_editor(
-            st.session_state[sector_state_key],
-            num_rows="fixed",
-            key="portfolio_sector_targets",
-            use_container_width=True,
-            disabled=["group"],
-            column_config={
-                "enabled": st.column_config.CheckboxColumn("enabled"),
-                "group": st.column_config.TextColumn("group"),
-                "weight": st.column_config.NumberColumn("weight (%)", format="%.2f"),
-            },
+        sector_targets_df = render_constraint_target_fields(
+            sector_state_key,
+            "portfolio_sector_target_row",
+            sectors,
         )
-        st.session_state[sector_state_key] = sector_targets_df
     elif constraint_type == "industry":
         st.markdown("**Industry targets**")
         industry_state_key = "portfolio_industry_targets_df"
-        _ensure_targets_state(industry_state_key, industries)
         industry_button_col1, industry_button_col2 = st.columns(2)
         with industry_button_col1:
             if st.button("Enable all industry restrictions", key="portfolio_industry_targets_enable_all"):
-                _set_all_targets_enabled(industry_state_key, True)
+                set_all_targets_enabled(industry_state_key, True)
                 st.rerun()
         with industry_button_col2:
             if st.button("Disable all industry restrictions", key="portfolio_industry_targets_disable_all"):
-                _set_all_targets_enabled(industry_state_key, False)
+                set_all_targets_enabled(industry_state_key, False)
                 st.rerun()
-        industry_targets_df = st.data_editor(
-            st.session_state[industry_state_key],
-            num_rows="fixed",
-            key="portfolio_industry_targets",
-            use_container_width=True,
-            disabled=["group"],
-            column_config={
-                "enabled": st.column_config.CheckboxColumn("enabled"),
-                "group": st.column_config.TextColumn("group"),
-                "weight": st.column_config.NumberColumn("weight (%)", format="%.2f"),
-            },
+        industry_targets_df = render_constraint_target_fields(
+            industry_state_key,
+            "portfolio_industry_target_row",
+            industries,
         )
-        st.session_state[industry_state_key] = industry_targets_df
 
-sector_targets = _targets_from_editor(sector_targets_df) if constraint_type == "sector" else {}
-industry_targets = _targets_from_editor(industry_targets_df) if constraint_type == "industry" else {}
+sector_targets = targets_from_dataframe(sector_targets_df) if constraint_type == "sector" else {}
+industry_targets = targets_from_dataframe(industry_targets_df) if constraint_type == "industry" else {}
 
 st.divider()
 with st.container(border=True):
@@ -443,6 +601,7 @@ if run_clicked:
     try:
         run_result = client.construct_portfolio(period, body)
         st.session_state["portfolio_result"] = run_result
+        st.session_state.pop("portfolio_backtest_result", None)
         st.rerun()
     except ApiError as exc:
         st.error(str(exc))
@@ -453,7 +612,7 @@ if portfolio_result:
     st.subheader("Portfolio result")
     summary = portfolio_result.get("summary", {})
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Capital", summary.get("total_capital", 0))
+    m1.metric("Capital", _format_metric_value(summary.get("total_capital", 0)))
     m2.metric("Positions", summary.get("position_count", 0))
     m3.metric("Trades", summary.get("trade_count", 0))
     m4.metric("Excluded", summary.get("excluded_count", 0))
@@ -465,20 +624,23 @@ if portfolio_result:
         _display_percent_dataframe(
             pd.DataFrame(portfolio_result.get("portfolio", [])),
             ["current_weight", "target_weight"],
+            value_columns=["target_amount"],
         )
     with tab2:
         _display_percent_dataframe(
             pd.DataFrame(portfolio_result.get("current_portfolio", [])),
             ["weight"],
+            value_columns=["quantity", "price", "amount"],
         )
     with tab3:
         _display_percent_dataframe(
             pd.DataFrame(portfolio_result.get("trades", [])),
             ["weight_delta", "current_weight", "target_weight"],
+            value_columns=["quantity_delta", "price"],
         )
     with tab4:
         st.markdown("**Excluded**")
-        st.dataframe(pd.DataFrame(portfolio_result.get("excluded", [])), use_container_width=True)
+        st.dataframe(pd.DataFrame(portfolio_result.get("excluded", [])), width="stretch")
         st.markdown("**Constraint diagnostics**")
         sector_diag = portfolio_result.get("constraint_diagnostics", {}).get("sector", [])
         industry_diag = portfolio_result.get("constraint_diagnostics", {}).get("industry", [])
@@ -501,4 +663,67 @@ if portfolio_result:
                 st.caption(note)
     with tab5:
         st.json(portfolio_result)
+
+    st.divider()
+    with st.container(border=True):
+        st.markdown("**Portfolio backtest**")
+        today = date.today()
+        default_start = today - timedelta(days=365)
+        backtest_col1, backtest_col2 = st.columns(2)
+        with backtest_col1:
+            backtest_start = st.date_input(
+                "Backtest start date",
+                value=default_start,
+                key="portfolio_backtest_start",
+            )
+        with backtest_col2:
+            backtest_end = st.date_input(
+                "Backtest end date",
+                value=today,
+                key="portfolio_backtest_end",
+            )
+
+        backtest_col3, backtest_col4 = st.columns(2)
+        with backtest_col3:
+            methodology = st.selectbox(
+                "Backtest methodology",
+                options=["fixed_weights", "drifting_weights"],
+                key="portfolio_backtest_methodology",
+                format_func=lambda value: {
+                    "fixed_weights": "Fixed weights",
+                    "drifting_weights": "Drifting weights",
+                }[value],
+            )
+        with backtest_col4:
+            benchmark_ticker = st.text_input(
+                "Benchmark ticker (optional)",
+                key="portfolio_backtest_benchmark",
+                placeholder="SPY",
+            ).strip().upper()
+
+        if st.button("Run portfolio backtest", key="portfolio_run_backtest"):
+            if backtest_end < backtest_start:
+                st.error("Backtest end date must be on or after start date.")
+            else:
+                try:
+                    backtest_result = client.run_portfolio_backtest(
+                        {
+                            "portfolio": portfolio_result.get("portfolio", []),
+                            "capital_base": float(summary.get("total_capital") or 1.0),
+                            "start_date": backtest_start.isoformat(),
+                            "end_date": backtest_end.isoformat(),
+                            "methodology": methodology,
+                            "benchmark_ticker": benchmark_ticker,
+                        }
+                    )
+                    st.session_state["portfolio_backtest_result"] = backtest_result
+                    st.rerun()
+                except ApiError as exc:
+                    st.error(str(exc))
+
+        portfolio_backtest_result = st.session_state.get("portfolio_backtest_result")
+        if portfolio_backtest_result:
+            _render_backtest_result(portfolio_backtest_result)
+            with st.expander("Backtest raw JSON"):
+                st.json(portfolio_backtest_result)
 

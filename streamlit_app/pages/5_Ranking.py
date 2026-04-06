@@ -257,7 +257,7 @@ else:
                     warnings = result.get("warnings", [])
                     for warning in warnings:
                         st.warning(warning)
-                    st.dataframe(df, use_container_width=True)
+                    st.dataframe(df, width="stretch")
 
         # Export to Excel: append all rankings vertically in one worksheet
         parts: list[pd.DataFrame] = []

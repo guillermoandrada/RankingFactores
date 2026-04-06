@@ -561,6 +561,20 @@
       "winsorization": false,
       "winsor_mode": "quantile",
       "method": "linear"
+    },
+    "Reuters Test": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Reuters Score": 1.0
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "percentile",
+      "winsorization": false,
+      "winsor_mode": "quantile",
+      "method": "linear"
     }
   }
 }

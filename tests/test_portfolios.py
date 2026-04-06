@@ -10,6 +10,7 @@ import api.routers.portfolios as portfolios_router
 import api.services.portfolio_service as portfolio_service_module
 from api.schemas.portfolios import PortfolioBuildBody
 from api.services.portfolio_service import PortfolioService
+from modules.portfolio.long_short import build_long_short_portfolio
 from modules.portfolio.legacy_rebalance import build_legacy_rebalance_target
 from modules.portfolio.models import SecurityCandidate
 
@@ -326,6 +327,58 @@ def test_portfolio_service_long_short_empty_universe_returns_cash_only(monkeypat
             "target_amount": 1.0,
         }
     ]
+
+
+def test_build_long_short_portfolio_uses_full_exposure_per_leg() -> None:
+    candidates = [
+        SecurityCandidate(ticker="AAA", score=4.0, name="AAA"),
+        SecurityCandidate(ticker="BBB", score=3.0, name="BBB"),
+        SecurityCandidate(ticker="CCC", score=2.0, name="CCC"),
+        SecurityCandidate(ticker="DDD", score=1.0, name="DDD"),
+    ]
+
+    positions, diagnostics = build_long_short_portfolio(
+        candidates,
+        bucket_count=2,
+        long_bucket_count=1,
+        short_bucket_count=1,
+        weighting="equal",
+        gross_exposure=1.0,
+        net_exposure=0.0,
+    )
+
+    weight_by_ticker = {position.ticker: position.target_weight for position in positions}
+    assert weight_by_ticker["AAA"] == 0.5
+    assert weight_by_ticker["BBB"] == 0.5
+    assert weight_by_ticker["CCC"] == -0.5
+    assert weight_by_ticker["DDD"] == -0.5
+    assert "long_exposure=1.0, short_exposure=1.0" in diagnostics.notes[-1]
+
+
+def test_build_long_short_portfolio_keeps_requested_net_exposure() -> None:
+    candidates = [
+        SecurityCandidate(ticker="AAA", score=4.0, name="AAA"),
+        SecurityCandidate(ticker="BBB", score=3.0, name="BBB"),
+        SecurityCandidate(ticker="CCC", score=2.0, name="CCC"),
+        SecurityCandidate(ticker="DDD", score=1.0, name="DDD"),
+    ]
+
+    positions, _ = build_long_short_portfolio(
+        candidates,
+        bucket_count=2,
+        long_bucket_count=1,
+        short_bucket_count=1,
+        weighting="equal",
+        gross_exposure=1.0,
+        net_exposure=0.2,
+    )
+
+    total_long = sum(position.target_weight for position in positions if position.target_weight > 0)
+    total_short = -sum(position.target_weight for position in positions if position.target_weight < 0)
+    net = sum(position.target_weight for position in positions)
+    assert total_long == 1.1
+    assert total_short == 0.9
+    assert abs(net - 0.2) < 1e-9
 
 
 def test_portfolios_endpoint(monkeypatch) -> None:

@@ -262,6 +262,20 @@ class RankingApiClient:
         path = f"/portfolios/{quote(period, safe='')}"
         return self._request("POST", path, json=body)
 
+    def run_portfolio_backtest(
+        self,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Run a backtest for an already-built portfolio."""
+        return self._request("POST", "/backtests/portfolio", json=body)
+
+    def run_strategy_backtest(
+        self,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Run a historical strategy backtest over multiple periods."""
+        return self._request("POST", "/backtests/strategy", json=body)
+
     def run_ranking_batch(
         self,
         period: str,

@@ -67,7 +67,7 @@ def render_tree_nav(
         with col_main:
             btn_kwargs = {
                 "key": f"{key_prefix}_nav_{node_id}",
-                "use_container_width": True,
+                "width": "stretch",
             }
             if is_selected:
                 btn_kwargs["type"] = "primary"

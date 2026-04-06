@@ -147,7 +147,7 @@ def render_node_editor(
 
     edited = st.data_editor(
         df,
-        use_container_width=True,
+        width="stretch",
         key=f"{key_prefix}_children",
         num_rows="fixed",
         column_config={
