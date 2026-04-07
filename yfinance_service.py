@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 import yfinance as yf
 
-from modules.analytics.time_series.services.base_price_provider import BasePriceProvider
+from modules.analytics.base_price_provider import BasePriceProvider
 
 
 class YFinanceService(BasePriceProvider):

@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="b383f428-0fc8-4728-a9ae-d89b82b32ebb" name="Changes" comment="actualizacion pasar de excel a sql">
+      <change afterPath="$PROJECT_DIR$/../.idea/dataSources.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../.idea/db-forest-config.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/proyecto factores.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../.idea/RankingFactores.iml" beforeDir="false" afterPath="$PROJECT_DIR$/../.idea/RankingFactores.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/../.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../api/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../modules/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../modules/analytics/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../modules/db/__init__.py" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;julianservert-sudo&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/guillermoandrada/RankingFactores.git&quot;,
+    &quot;accountId&quot;: &quot;1e96b14f-a1a6-4fea-9fcd-53d543f2f521&quot;
+  }
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 3
+}</component>
+  <component name="ProjectId" id="39CMWNZrklKVKfjHSo5Gab0LURn" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "ai.playground.ignore.import.keys.banner.in.settings": "true",
+    "git-widget-placeholder": "master",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-PY-253.29346.308" />
+        <option value="bundled-python-sdk-ca5e2b39c7df-6e1f45a539f7-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-253.29346.308" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="b383f428-0fc8-4728-a9ae-d89b82b32ebb" name="Changes" comment="" />
+      <created>1770195632089</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1770195632089</updated>
+      <workItem from="1770195633107" duration="19000" />
+      <workItem from="1770195701487" duration="89000" />
+      <workItem from="1770195805321" duration="2841000" />
+    </task>
+    <task id="LOCAL-00001" summary="actualizacion pasar de excel a sql">
+      <option name="closed" value="true" />
+      <created>1770206351733</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1770206351734</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="actualizacion pasar de excel a sql" />
+    <option name="LAST_COMMIT_MESSAGE" value="actualizacion pasar de excel a sql" />
+  </component>
+</project>
