@@ -11,7 +11,10 @@ import api.services.portfolio_service as portfolio_service_module
 from api.schemas.portfolios import PortfolioBuildBody
 from api.services.portfolio_service import PortfolioService
 from modules.portfolio.long_short import build_long_short_portfolio
-from modules.portfolio.legacy_rebalance import build_legacy_rebalance_target
+from modules.portfolio.legacy_rebalance import (
+    build_legacy_rebalance_target,
+    legacy_rebalance_trade_reason,
+)
 from modules.portfolio.models import SecurityCandidate
 
 
@@ -62,7 +65,7 @@ def test_portfolio_service_rebalance_generates_trades(monkeypatch) -> None:
             {
                 "Ticker": ["AAA", "BBB"],
                 "Name": ["AAA Corp", "BBB Corp"],
-                "Scoring": [5.0, 1.0],
+                "Scoring": [10.0, 4.0],
             }
         )
 
@@ -87,6 +90,8 @@ def test_portfolio_service_rebalance_generates_trades(monkeypatch) -> None:
     assert result["construction_mode"] == "rebalance_existing"
     assert result["trades"]
     assert any(trade["ticker"] == "AAA" for trade in result["trades"])
+    bbb_trade = next(t for t in result["trades"] if t["ticker"] == "BBB")
+    assert bbb_trade["reason"] == "sell_score_below_5"
 
 
 def test_portfolio_service_legacy_fully_restricted_returns_cash(monkeypatch) -> None:
@@ -95,7 +100,7 @@ def test_portfolio_service_legacy_fully_restricted_returns_cash(monkeypatch) -> 
             {
                 "Ticker": ["AAA", "BBB", "CCC"],
                 "Name": ["AAA Corp", "BBB Corp", "CCC Corp"],
-                "Scoring": [3.0, 2.0, 1.0],
+                "Scoring": [10.0, 9.0, 8.0],
             }
         )
 
@@ -133,7 +138,7 @@ def test_portfolio_service_legacy_partial_allocation_leaves_residual_cash(monkey
             {
                 "Ticker": ["AAA", "BBB", "CCC"],
                 "Name": ["AAA Corp", "BBB Corp", "CCC Corp"],
-                "Scoring": [3.0, 2.0, 1.0],
+                "Scoring": [10.0, 9.0, 8.0],
             }
         )
 
@@ -165,7 +170,7 @@ def test_portfolio_service_legacy_explicit_positive_group_is_capped(monkeypatch)
             {
                 "Ticker": ["AAA", "BBB", "CCC"],
                 "Name": ["AAA Corp", "BBB Corp", "CCC Corp"],
-                "Scoring": [3.0, 2.0, 1.0],
+                "Scoring": [10.0, 9.0, 8.0],
             }
         )
 
@@ -194,6 +199,42 @@ def test_portfolio_service_legacy_explicit_positive_group_is_capped(monkeypatch)
     )
     assert software_weight == 0.3
     assert cash_weight == 0.7
+
+
+def test_legacy_rebalance_excludes_scores_below_sale_floor() -> None:
+    candidates = [
+        SecurityCandidate(ticker="HI", score=10.0, name="High", sector="Tech", industry="Software"),
+        SecurityCandidate(ticker="LO", score=4.9, name="Low", sector="Tech", industry="Software"),
+    ]
+    positions, diagnostics = build_legacy_rebalance_target(
+        candidates,
+        constraint_type="none",
+        neutral_position=0.5,
+        max_position=0.5,
+        score_quantile_cutoff=-1.0,
+    )
+    assert len(positions) == 1
+    assert positions[0].ticker == "HI"
+    assert any(ex.get("reason") == "score_below_5" for ex in diagnostics.excluded)
+
+
+def test_legacy_rebalance_trade_reason_prioritizes_ethical_over_score() -> None:
+    c = SecurityCandidate(
+        ticker="X",
+        score=4.0,
+        name="",
+        ethical_allowed=False,
+    )
+    r = legacy_rebalance_trade_reason(
+        current_weight=0.1,
+        target_weight=0.0,
+        weight_delta=-0.1,
+        candidate=c,
+        score=4.0,
+        industry_quantile_cutoffs={},
+        max_position=0.05,
+    )
+    assert r == "sell_ethical_filter"
 
 
 def test_legacy_rebalance_drops_near_zero_residual_positions() -> None:
@@ -230,7 +271,7 @@ def test_portfolio_service_rebalance_to_cash_adds_cash_trade(monkeypatch) -> Non
             {
                 "Ticker": ["AAA", "BBB", "CCC"],
                 "Name": ["AAA Corp", "BBB Corp", "CCC Corp"],
-                "Scoring": [3.0, 2.0, 1.0],
+                "Scoring": [10.0, 9.0, 8.0],
             }
         )
 
@@ -438,7 +479,7 @@ def test_portfolio_service_legacy_zero_weight_restricts_group(monkeypatch) -> No
             {
                 "Ticker": ["AAA", "BBB", "CCC"],
                 "Name": ["AAA Corp", "BBB Corp", "CCC Corp"],
-                "Scoring": [3.0, 2.0, 1.0],
+                "Scoring": [10.0, 9.0, 8.0],
             }
         )
 

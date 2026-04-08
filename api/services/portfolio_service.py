@@ -16,6 +16,10 @@ from modules.portfolio import (
     parse_ethical_filter_rows,
     parse_holdings_rows,
 )
+from modules.portfolio.legacy_rebalance import (
+    industry_quantile_cutoffs_for_allowed,
+    legacy_rebalance_trade_reason,
+)
 from modules.portfolio.constraints import compute_group_weights
 from modules.portfolio.models import (
     HoldingPosition,
@@ -61,6 +65,7 @@ class PortfolioService:
         current_positions: list[HoldingPosition] = []
         cash = 0.0
         total_capital = float(request.capital_base)
+        legacy_trade_context: dict[str, Any] | None = None
         if request.construction_mode == "rebalance_existing":
             if not request.current_holdings:
                 raise ValueError(
@@ -73,6 +78,17 @@ class PortfolioService:
             total_capital = cash + sum(position.amount() for position in current_positions)
             if total_capital <= 0:
                 raise ValueError("Existing portfolio value must be positive.")
+
+        if (
+            request.strategy == "legacy_rebalance"
+            and request.construction_mode == "rebalance_existing"
+            and current_positions
+        ):
+            legacy_trade_context = {
+                "candidates": candidates,
+                "score_quantile_cutoff": float(request.score_quantile_cutoff),
+                "max_position": float(request.max_position),
+            }
 
         target_cash_weight = self._target_cash_weight(
             strategy=request.strategy,
@@ -106,6 +122,7 @@ class PortfolioService:
             min_trade_weight=float(request.min_trade_weight),
             current_cash=cash,
             target_cash_weight=target_cash_weight,
+            legacy_trade_context=legacy_trade_context,
         )
         constraint_diagnostics = self._build_constraint_diagnostics(
             target_positions,
@@ -157,15 +174,22 @@ class PortfolioService:
             [row.model_dump() for row in request.ethical_filter_rows]
         )
 
+        tickers = df_ranked[ticker_col].astype(str).str.strip().str.upper().tolist()
+        scores = pd.to_numeric(df_ranked[score_col], errors="coerce").fillna(0.0).tolist()
+        if name_col:
+            names = df_ranked[name_col].astype(str).tolist()
+        else:
+            names = [""] * len(df_ranked)
+
         candidates: list[SecurityCandidate] = []
-        for _, row in df_ranked.iterrows():
-            ticker = str(row[ticker_col]).strip().upper()
+        for ticker, score, nm in zip(tickers, scores, names, strict=True):
             meta = meta_by_ticker.get(ticker, {})
+            display_name = nm if name_col else str(meta.get("name") or "")
             candidates.append(
                 SecurityCandidate(
                     ticker=ticker,
-                    score=float(row[score_col]),
-                    name=str(row[name_col]) if name_col else str(meta.get("name") or ""),
+                    score=float(score),
+                    name=display_name,
                     sector=str(meta.get("sector") or ""),
                     industry=str(meta.get("industry") or ""),
                     ethical_allowed=ticker not in blocked,
@@ -312,12 +336,27 @@ class PortfolioService:
         min_trade_weight: float,
         current_cash: float,
         target_cash_weight: float,
+        legacy_trade_context: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         if not current_positions and current_cash <= 0:
             return []
         target_map = {position.ticker: position for position in target_positions}
         current_map = {position.ticker: position for position in current_positions}
         current_weights = self._current_weight_map(current_positions, total_capital)
+
+        candidate_by_ticker = {}
+        industry_cutoffs: dict[str, float] = {}
+        if legacy_trade_context:
+            raw_candidates = legacy_trade_context.get("candidates") or []
+            candidate_by_ticker = {c.ticker: c for c in raw_candidates}
+            allowed = [c for c in raw_candidates if c.is_allowed]
+            industry_cutoffs = industry_quantile_cutoffs_for_allowed(
+                allowed,
+                float(legacy_trade_context["score_quantile_cutoff"]),
+            )
+            max_pos = float(legacy_trade_context["max_position"])
+        else:
+            max_pos = 0.0
 
         trades: list[PortfolioTrade] = []
         for ticker in sorted(set(target_map) | set(current_map)):
@@ -332,6 +371,20 @@ class PortfolioService:
             quantity_delta = None
             if price:
                 quantity_delta = round(weight_delta * total_capital / price, 4)
+            if legacy_trade_context and ticker != CASH_TICKER:
+                cand = candidate_by_ticker.get(ticker)
+                score = current.score if current is not None else (cand.score if cand else None)
+                reason = legacy_rebalance_trade_reason(
+                    current_weight=current_weight,
+                    target_weight=target_weight,
+                    weight_delta=weight_delta,
+                    candidate=cand,
+                    score=score,
+                    industry_quantile_cutoffs=industry_cutoffs,
+                    max_position=max_pos,
+                )
+            else:
+                reason = "rebalance_to_target"
             trades.append(
                 PortfolioTrade(
                     action="buy" if weight_delta > 0 else "sell",
@@ -339,7 +392,7 @@ class PortfolioService:
                     weight_delta=weight_delta,
                     current_weight=current_weight,
                     target_weight=target_weight,
-                    reason="rebalance_to_target",
+                    reason=reason,
                     quantity_delta=quantity_delta,
                     price=price,
                     sector=(target.sector if target else current.sector if current else ""),

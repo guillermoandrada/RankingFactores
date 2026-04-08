@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import APIRouter, HTTPException
@@ -11,6 +10,7 @@ from fastapi.responses import Response
 from api.dependencies import get_db
 from api.schemas.scorings import BatchScoringBody, ComputePeriodScoringBody, ScopeItem
 from api.services.ranking_service import compute_ranking, export_ranking_to_xlsx
+from modules.pandas_jsonable import dataframe_to_jsonable_records
 
 router = APIRouter(prefix="/scorings", tags=["scorings"])
 
@@ -33,7 +33,7 @@ async def compute_period_scoring_batch(period: str, request: BatchScoringBody):
                 scoring_profile=profile_name,
             )
             warnings = list(df_ranked.attrs.get("warnings", []))
-            records = json.loads(df_ranked.to_json(orient="records", date_format="iso"))
+            records = dataframe_to_jsonable_records(df_ranked)
             return scope_key, {
                 "period": period,
                 "industry": scope_item.industry.strip() or None,
@@ -78,9 +78,7 @@ async def compute_period_scoring(period: str, request: ComputePeriodScoringBody)
             scoring_profile=request.scoring_profile,
         )
         warnings = list(df_ranked.attrs.get("warnings", []))
-        records = json.loads(
-            df_ranked.to_json(orient="records", date_format="iso")
-        )
+        records = dataframe_to_jsonable_records(df_ranked)
 
         if request.export:
             scope = request.industry.strip() or request.sector.strip() or "ALL"

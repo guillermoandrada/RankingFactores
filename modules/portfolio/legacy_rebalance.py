@@ -9,6 +9,8 @@ from modules.portfolio.models import PortfolioDiagnostics, SecurityCandidate, Ta
 
 
 _WEIGHT_EPSILON = 1e-9
+# Total score strictly below this cannot be held; holdings below are sold entirely.
+SCORE_SALE_FLOOR = 5.0
 
 
 def _ranked_by_group(
@@ -23,6 +25,76 @@ def _ranked_by_group(
     return dict(grouped)
 
 
+def _quantile_sorted(values: list[float], q: float) -> float:
+    values = sorted(values)
+    if not values:
+        return float("-inf")
+    idx = (len(values) - 1) * q
+    low = math.floor(idx)
+    high = math.ceil(idx)
+    if low == high:
+        return values[low]
+    return values[low] + (values[high] - values[low]) * (idx - low)
+
+
+def industry_quantile_cutoffs_for_allowed(
+    allowed_candidates: list[SecurityCandidate],
+    score_quantile_cutoff: float,
+) -> dict[str, float]:
+    """
+    Per-industry score at the given quantile, over all allowed (filter-passing) names.
+    Used for both eligibility and trade reason tagging.
+    """
+    if not 0.0 <= score_quantile_cutoff <= 1.0:
+        return {}
+    industry_scores: dict[str, list[float]] = defaultdict(list)
+    for candidate in allowed_candidates:
+        if candidate.industry:
+            industry_scores[candidate.industry].append(candidate.score)
+    return {
+        industry: _quantile_sorted(scores, score_quantile_cutoff)
+        for industry, scores in industry_scores.items()
+    }
+
+
+def legacy_rebalance_trade_reason(
+    *,
+    current_weight: float,
+    target_weight: float,
+    weight_delta: float,
+    candidate: SecurityCandidate | None,
+    score: float | None,
+    industry_quantile_cutoffs: dict[str, float],
+    max_position: float,
+) -> str:
+    """
+    Classify a legacy rebalance trade for reporting.
+
+    Sell priority: ethical filter, score < 5, below industry quantile, trim above max
+    weight, then generic rebalance. Buys: buy_to_objective.
+    """
+    if weight_delta > _WEIGHT_EPSILON:
+        return "buy_to_objective"
+    if weight_delta >= -_WEIGHT_EPSILON:
+        return "rebalance_to_target"
+
+    resolved_score = float(score) if score is not None else 0.0
+    if candidate is not None and not candidate.is_allowed:
+        return "sell_ethical_filter"
+    if resolved_score < SCORE_SALE_FLOOR:
+        return "sell_score_below_5"
+
+    industry = (candidate.industry if candidate else "") or ""
+    cutoff = industry_quantile_cutoffs.get(industry, float("-inf"))
+    if resolved_score < cutoff:
+        return "sell_below_score_quantile"
+
+    if current_weight > max_position + _WEIGHT_EPSILON:
+        return "sell_trim_max_position"
+
+    return "sell_rebalance_to_objective"
+
+
 def build_legacy_rebalance_target(
     candidates: list[SecurityCandidate],
     *,
@@ -34,13 +106,17 @@ def build_legacy_rebalance_target(
     industry_targets: dict[str, float] | None = None,
 ) -> tuple[list[TargetPosition], PortfolioDiagnostics]:
     """
-    Build a target portfolio using the spirit of the legacy model.
+    Objective long weights for legacy rebalance (ranked allocation).
 
-    The first release prioritizes explicit industry targets when provided.
-    When only sector targets are supplied, it allocates within sector.
+    Eligibility (in order): pass external filters, total score >= SCORE_SALE_FLOOR (5),
+    then at or above the industry score quantile when cutoff is in [0, 1].
+
+    Rebalance trades vs current holdings use these targets; sell reasons are assigned
+    in the API layer (ethical filter, score < 5, below quantile, trim above max weight,
+    or rebalance to objective; buys use buy_to_objective).
     """
     diagnostics = PortfolioDiagnostics()
-    eligible = [candidate for candidate in candidates if candidate.is_allowed]
+    allowed = [candidate for candidate in candidates if candidate.is_allowed]
     for candidate in candidates:
         if not candidate.is_allowed:
             diagnostics.excluded.append({
@@ -48,30 +124,25 @@ def build_legacy_rebalance_target(
                 "reason": "blocked_by_filter",
             })
 
+    if not allowed:
+        return [], diagnostics
+
+    industry_cutoffs = industry_quantile_cutoffs_for_allowed(allowed, score_quantile_cutoff)
+
+    eligible = []
+    for candidate in allowed:
+        if candidate.score < SCORE_SALE_FLOOR:
+            diagnostics.excluded.append({
+                "ticker": candidate.ticker,
+                "reason": "score_below_5",
+            })
+            continue
+        eligible.append(candidate)
+
     if not eligible:
         return [], diagnostics
 
-    if 0.0 <= score_quantile_cutoff <= 1.0:
-        industry_scores: dict[str, list[float]] = defaultdict(list)
-        for candidate in eligible:
-            if candidate.industry:
-                industry_scores[candidate.industry].append(candidate.score)
-
-        def _quantile(values: list[float], q: float) -> float:
-            values = sorted(values)
-            if not values:
-                return float("-inf")
-            idx = (len(values) - 1) * q
-            low = math.floor(idx)
-            high = math.ceil(idx)
-            if low == high:
-                return values[low]
-            return values[low] + (values[high] - values[low]) * (idx - low)
-
-        industry_cutoffs = {
-            industry: _quantile(scores, score_quantile_cutoff)
-            for industry, scores in industry_scores.items()
-        }
+    if industry_cutoffs:
         filtered = []
         for candidate in eligible:
             cutoff = industry_cutoffs.get(candidate.industry, float("-inf"))
