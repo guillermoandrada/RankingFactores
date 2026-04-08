@@ -15,9 +15,10 @@ Select a page from the **sidebar** in workflow order:
 
 1. **Periods** — Upload Excel data, create periods, view and edit content.
 2. **Metrics** — Create derived metrics (e.g. Debt/Assets) from existing metrics.
-3. **Scoring Profile Wizard** — Build scoring methodologies step-by-step.
-4. **Scoring Profiles** — Edit and manage saved scoring profiles.
-5. **Ranking** — Run rankings for a period and profile, export results.
-6. **Portfolio Construction** — Build or rebalance portfolios from ranking output.
-7. **Strategy Backtest** — Rebuild portfolios across manual date windows and compare performance versus a benchmark.
+3. **Metric Selection (IC)** — Rank IC vs forward returns and inter-factor correlation.
+4. **Scoring Profile Wizard** — Build scoring methodologies step-by-step.
+5. **Scoring Profiles** — Edit and manage saved scoring profiles.
+6. **Ranking** — Run rankings for a period and profile, export results.
+7. **Portfolio Construction** — Build or rebalance portfolios from ranking output.
+8. **Strategy Backtest** — Rebuild portfolios across manual date windows and compare performance versus a benchmark.
 """)

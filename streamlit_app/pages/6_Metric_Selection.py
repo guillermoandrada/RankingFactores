@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -15,12 +10,14 @@ import streamlit as st
 from modules.analytics.ic_analyzer import ICAnalyzer
 from modules.db import FinancialDatabase
 
+from streamlit_app.ui.layout import inject_custom_css, render_page_header
 
 st.set_page_config(page_title="Metric Selection (IC)", layout="wide")
-st.title("Metric Selection (IC)")
-st.caption(
+inject_custom_css()
+render_page_header(
+    "Metric Selection (IC)",
     "Multivariate factor analysis: Rank IC vs forward returns (predictive power) and "
-    "Spearman correlation between factors on shared cross-sections (colinearity)."
+    "Spearman correlation between factors on shared cross-sections (colinearity).",
 )
 
 db = FinancialDatabase()
