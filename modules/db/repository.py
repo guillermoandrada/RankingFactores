@@ -5,7 +5,6 @@ Encapsulates all database operations.
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Optional
 
@@ -16,6 +15,7 @@ from sqlalchemy.engine import Engine
 from modules.config import DB_URL, FIXED_COLUMNS
 from modules.db.schema import create_tables
 from modules.models import ImportResult
+from modules.pandas_jsonable import dataframe_to_jsonable_records
 
 
 class FinancialDatabase:
@@ -45,20 +45,23 @@ class FinancialDatabase:
         """
         if not metric_names:
             return {}
+        unique = list(dict.fromkeys(metric_names))
         tbl = self._get_table("metrics")
-        result = {}
         with self._engine.connect() as conn:
-            for name in metric_names:
-                row = conn.execute(
-                    select(tbl.c.metric_id).where(tbl.c.metric_name == name)
-                ).first()
-                if not row:
-                    raise ValueError(
-                        f"Metric '{name}' not found in database. "
-                        "Ensure the metric exists (import data first)."
-                    )
-                result[name] = row[0]
-        return result
+            rows = conn.execute(
+                select(tbl.c.metric_name, tbl.c.metric_id).where(
+                    tbl.c.metric_name.in_(unique)
+                )
+            ).fetchall()
+        found = {str(r[0]): int(r[1]) for r in rows}
+        missing = [n for n in unique if n not in found]
+        if missing:
+            raise ValueError(
+                "Metric(s) not found in database: "
+                + ", ".join(missing)
+                + ". Ensure each metric exists (import data first)."
+            )
+        return {name: found[name] for name in metric_names}
 
     def list_periods(self) -> list[str]:
         """Return all distinct periods in fundamental_values."""
@@ -120,7 +123,7 @@ class FinancialDatabase:
             aggfunc="first",
         ).reset_index()
         metrics = list(wide.columns.drop(["security_id", "ticker", "name", "sector", "industry"]))
-        data = json.loads(wide.to_json(orient="records", date_format="iso"))
+        data = dataframe_to_jsonable_records(wide)
         return {
             "period": period,
             "metrics": metrics,

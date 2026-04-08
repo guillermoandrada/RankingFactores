@@ -25,6 +25,10 @@ from streamlit_app.ui import (
     render_page_header,
     render_sidebar_api_test,
 )
+from streamlit_app.ui.reference_data import (
+    load_reference_data_bundle,
+    render_reference_refresh_button,
+)
 
 _PORTFOLIO_HOLDINGS_CACHE_KEY = "portfolio_holdings_rows_cache"
 _PORTFOLIO_HOLDINGS_SIG_KEY = "portfolio_holdings_content_sig"
@@ -275,14 +279,14 @@ render_page_header(
 
 client = get_api_client("portfolio")
 render_sidebar_api_test(client, "portfolio_test_api")
+render_reference_refresh_button("portfolio")
 
 try:
-    periods = client.list_periods()
-    profiles = client.list_scoring_profiles()
+    periods, profiles, sectors, industries, indices = load_reference_data_bundle(
+        client,
+        cache_key="portfolio",
+    )
     profile_names = sorted(profiles.keys())
-    sectors = client.list_sectors()
-    industries = client.list_industries()
-    indices = client.list_indices()
 except ApiError as exc:
     st.error(f"Cannot load data: {exc}")
     periods = []

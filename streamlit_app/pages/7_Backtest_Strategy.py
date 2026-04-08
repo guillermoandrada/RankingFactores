@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, timedelta
 from typing import Any
 
@@ -22,6 +23,13 @@ from streamlit_app.ui import (
     render_page_header,
     render_sidebar_api_test,
 )
+from streamlit_app.ui.reference_data import (
+    load_reference_data_bundle,
+    render_reference_refresh_button,
+)
+
+STRATEGY_SCHEDULE_ROWS_KEY = "strategy_backtest_schedule_rows"
+_LEGACY_SCHEDULE_DF_KEY = "strategy_backtest_schedule_df"
 
 
 def _percent_input(
@@ -217,17 +225,119 @@ def _render_backtest_result(backtest_result: dict[str, Any]) -> None:
         _render_component_returns(backtest_result.get("components", []))
 
 
-def _default_schedule(available_periods: list[str]) -> pd.DataFrame:
+def _default_schedule_rows(available_periods: list[str]) -> list[dict[str, Any]]:
     today = date.today()
-    return pd.DataFrame(
-        [
+    return [
+        {
+            "id": str(uuid.uuid4()),
+            "period": available_periods[0] if available_periods else "",
+            "start_date": today - timedelta(days=365),
+            "end_date": today,
+        }
+    ]
+
+
+def _migrate_legacy_schedule_df_to_rows(available_periods: list[str]) -> None:
+    if STRATEGY_SCHEDULE_ROWS_KEY in st.session_state or _LEGACY_SCHEDULE_DF_KEY not in st.session_state:
+        return
+    legacy = st.session_state.pop(_LEGACY_SCHEDULE_DF_KEY)
+    if not isinstance(legacy, pd.DataFrame) or legacy.empty:
+        return
+    rows_out: list[dict[str, Any]] = []
+    fallback_period = available_periods[0] if available_periods else ""
+    for _, r in legacy.iterrows():
+        p = str(r.get("period") or "").strip() or fallback_period
+        if available_periods and p not in available_periods:
+            p = fallback_period
+        try:
+            sv = r.get("start_date")
+            ev = r.get("end_date")
+            sd = pd.Timestamp(sv).date() if pd.notna(sv) else date.today() - timedelta(days=365)
+            ed = pd.Timestamp(ev).date() if pd.notna(ev) else date.today()
+        except (ValueError, TypeError, OSError):
+            sd = date.today() - timedelta(days=365)
+            ed = date.today()
+        rows_out.append(
+            {"id": str(uuid.uuid4()), "period": p, "start_date": sd, "end_date": ed}
+        )
+    if rows_out:
+        st.session_state[STRATEGY_SCHEDULE_ROWS_KEY] = rows_out
+
+
+def _render_strategy_schedule_windows(available_periods: list[str]) -> None:
+    st.markdown("**Schedule windows**")
+    st.caption("Pick a ranking period and calendar start/end dates for each backtest window.")
+
+    _migrate_legacy_schedule_df_to_rows(available_periods)
+    if STRATEGY_SCHEDULE_ROWS_KEY not in st.session_state:
+        st.session_state[STRATEGY_SCHEDULE_ROWS_KEY] = _default_schedule_rows(available_periods)
+
+    sched_rows: list[dict[str, Any]] = list(st.session_state[STRATEGY_SCHEDULE_ROWS_KEY])
+    for row in sched_rows:
+        if "id" not in row:
+            row["id"] = str(uuid.uuid4())
+
+    h1, _, _, h4 = st.columns([4, 2, 2, 1])
+    h1.caption("Period")
+    h4.caption("")
+
+    updated: list[dict[str, Any]] = []
+    for row in sched_rows:
+        rid = str(row["id"])
+        period_val = str(row.get("period") or "")
+        if available_periods and period_val not in available_periods:
+            period_val = available_periods[0]
+        start_val = row.get("start_date")
+        end_val = row.get("end_date")
+        if not isinstance(start_val, date):
+            start_val = date.today() - timedelta(days=365)
+        if not isinstance(end_val, date):
+            end_val = date.today()
+
+        c1, c2, c3, c4 = st.columns([4, 2, 2, 1])
+        with c1:
+            p_idx = available_periods.index(period_val) if period_val in available_periods else 0
+            period_chosen = st.selectbox(
+                "Period",
+                options=available_periods,
+                index=p_idx,
+                key=f"strategy_bt_sched_period_{rid}",
+                label_visibility="collapsed",
+            )
+        with c2:
+            start_d = st.date_input(
+                "Start date",
+                value=start_val,
+                key=f"strategy_bt_sched_start_{rid}",
+            )
+        with c3:
+            end_d = st.date_input(
+                "End date",
+                value=end_val,
+                key=f"strategy_bt_sched_end_{rid}",
+            )
+        with c4:
+            if st.button("Remove", key=f"strategy_bt_sched_remove_{rid}"):
+                st.session_state[STRATEGY_SCHEDULE_ROWS_KEY] = [
+                    item for item in sched_rows if str(item["id"]) != rid
+                ]
+                st.rerun()
+        updated.append(
+            {"id": rid, "period": period_chosen, "start_date": start_d, "end_date": end_d}
+        )
+
+    st.session_state[STRATEGY_SCHEDULE_ROWS_KEY] = updated
+
+    if st.button("Add window", key="strategy_bt_sched_add"):
+        st.session_state[STRATEGY_SCHEDULE_ROWS_KEY].append(
             {
+                "id": str(uuid.uuid4()),
                 "period": available_periods[0] if available_periods else "",
-                "start_date": today - timedelta(days=365),
-                "end_date": today,
+                "start_date": date.today() - timedelta(days=365),
+                "end_date": date.today(),
             }
-        ]
-    )
+        )
+        st.rerun()
 
 
 st.set_page_config(page_title="Strategy Backtest", layout="wide")
@@ -239,14 +349,14 @@ render_page_header(
 
 client = get_api_client("strategy_backtest")
 render_sidebar_api_test(client, "strategy_backtest_api")
+render_reference_refresh_button("strategy_backtest")
 
 try:
-    periods = client.list_periods()
-    profiles = client.list_scoring_profiles()
+    periods, profiles, sectors, industries, indices = load_reference_data_bundle(
+        client,
+        cache_key="strategy_backtest",
+    )
     profile_names = sorted(profiles.keys())
-    sectors = client.list_sectors()
-    industries = client.list_industries()
-    indices = client.list_indices()
 except ApiError as exc:
     st.error(f"Cannot load data: {exc}")
     periods = []
@@ -480,43 +590,27 @@ with st.container(border=True):
             placeholder="SPY",
         ).strip().upper()
 
-    schedule_state_key = "strategy_backtest_schedule_df"
-    if schedule_state_key not in st.session_state:
-        st.session_state[schedule_state_key] = _default_schedule(periods)
-    schedule_df = st.data_editor(
-        st.session_state[schedule_state_key],
-        num_rows="dynamic",
-        key="strategy_backtest_schedule_editor",
-        width="stretch",
-        column_config={
-            "period": st.column_config.SelectboxColumn("period", options=periods),
-            "start_date": st.column_config.DateColumn("start_date"),
-            "end_date": st.column_config.DateColumn("end_date"),
-        },
-    )
-    st.session_state[schedule_state_key] = schedule_df
+    _render_strategy_schedule_windows(periods)
 
 run_clicked = st.button("Run strategy backtest", type="primary", key="strategy_backtest_run")
 if run_clicked:
     schedule_rows: list[dict[str, Any]] = []
-    for _, schedule_row in schedule_df.iterrows():
-        period = str(schedule_row.get("period") or "").strip()
-        start_value = schedule_row.get("start_date")
-        end_value = schedule_row.get("end_date")
-        if not period or pd.isna(start_value) or pd.isna(end_value):
+    for sched in st.session_state.get(STRATEGY_SCHEDULE_ROWS_KEY, []):
+        period = str(sched.get("period") or "").strip()
+        start_d = sched.get("start_date")
+        end_d = sched.get("end_date")
+        if not period or not isinstance(start_d, date) or not isinstance(end_d, date):
             continue
-        start_date_value = pd.Timestamp(start_value).date()
-        end_date_value = pd.Timestamp(end_value).date()
         schedule_rows.append(
             {
                 "period": period,
-                "start_date": start_date_value.isoformat(),
-                "end_date": end_date_value.isoformat(),
+                "start_date": start_d.isoformat(),
+                "end_date": end_d.isoformat(),
             }
         )
 
     if not schedule_rows:
-        st.error("Add at least one schedule row with period, start date, and end date.")
+        st.error("Add at least one backtest window with period, start date, and end date.")
     else:
         try:
             result = client.run_strategy_backtest(

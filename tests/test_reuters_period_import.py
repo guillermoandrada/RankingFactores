@@ -29,6 +29,33 @@ def _build_reuters_excel_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def _build_minimal_reuters_excel_bytes() -> bytes:
+    df = pd.DataFrame(
+        {
+            "Identifier": ["VIK.N", "GEV.N"],
+            "Earnings Quality Country Rank, Current": [60, 92],
+        }
+    )
+    buffer = BytesIO()
+    df.to_excel(buffer, index=False)
+    return buffer.getvalue()
+
+
+def test_reuters_reader_accepts_minimal_identifier_and_score_columns(tmp_path) -> None:
+    file_path = tmp_path / "reuters_min.xlsx"
+    file_path.write_bytes(_build_minimal_reuters_excel_bytes())
+
+    reader = ReutersMetricsFileReader()
+    result = reader.read(str(file_path))
+
+    assert result["Ticker"].tolist() == ["VIK", "GEV"]
+    assert result["Reuters Score"].tolist() == [60, 92]
+    assert result["Long Name"].tolist() == ["", ""]
+    assert result["GICS Sector Name"].tolist() == ["", ""]
+    assert result["GICS Industry Group Name"].tolist() == ["", ""]
+    assert result["Market Cap (USD)"].isna().all()
+
+
 def test_reuters_reader_normalizes_columns(tmp_path) -> None:
     file_path = tmp_path / "reuters.xlsx"
     file_path.write_bytes(_build_reuters_excel_bytes())

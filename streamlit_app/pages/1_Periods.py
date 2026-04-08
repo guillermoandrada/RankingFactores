@@ -43,7 +43,11 @@ with tabs[0]:
     upload_behavior = "replace"
 
     if reader == "reuters_metrics":
-        st.caption("Reuters uploads require a manual period and store the metric as `Reuters Score`.")
+        st.caption(
+            "Reuters uploads require a manual period and store the metric as `Reuters Score`. "
+            "The file only needs **Identifier** (or Identifier (RIC)) and **Earnings Quality Country Rank, Current**; "
+            "other columns are optional."
+        )
         import_mode = st.radio(
             "Import target",
             options=["create_or_replace", "append_existing"],

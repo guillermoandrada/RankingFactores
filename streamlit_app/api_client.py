@@ -5,6 +5,20 @@ from urllib.parse import quote
 
 import httpx
 
+# Reused across Streamlit reruns (same process) to avoid new TCP/TLS per request.
+_HTTP_CLIENTS: dict[tuple[str, float], httpx.Client] = {}
+
+
+def _pooled_http_client(base_url: str, timeout_seconds: float) -> httpx.Client:
+    key = (base_url, timeout_seconds)
+    if key not in _HTTP_CLIENTS:
+        _HTTP_CLIENTS[key] = httpx.Client(
+            base_url=base_url,
+            timeout=timeout_seconds,
+            limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+        )
+    return _HTTP_CLIENTS[key]
+
 
 class ApiError(RuntimeError):
     pass
@@ -14,11 +28,10 @@ class RankingApiClient:
     def __init__(self, base_url: str, timeout_seconds: float = 30.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self._http = _pooled_http_client(self.base_url, timeout_seconds)
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
-        url = f"{self.base_url}{path}"
-        with httpx.Client(timeout=self.timeout_seconds) as client:
-            response = client.request(method, url, **kwargs)
+        response = self._http.request(method, path, **kwargs)
         if response.status_code >= 400:
             try:
                 detail = response.json()
@@ -53,7 +66,6 @@ class RankingApiClient:
         period: str | None = None,
     ) -> dict[str, Any]:
         """Create period from uploaded file using the selected reader."""
-        url = f"{self.base_url.rstrip('/')}/periods"
         params: dict[str, Any] = {
             "if_period_exists": if_period_exists,
             "reader": reader,
@@ -61,8 +73,7 @@ class RankingApiClient:
         if period:
             params["period"] = period
         files = {"file": (filename, file_content)}
-        with httpx.Client(timeout=self.timeout_seconds) as client:
-            response = client.post(url, params=params, files=files)
+        response = self._http.post("/periods", params=params, files=files)
         if response.status_code >= 400:
             try:
                 detail = response.json()
@@ -78,10 +89,9 @@ class RankingApiClient:
         filename: str,
     ) -> dict[str, Any]:
         """Replace period content by uploading a new file."""
-        url = f"{self.base_url.rstrip('/')}/periods/{quote(period, safe='')}"
+        path = f"/periods/{quote(period, safe='')}"
         files = {"file": (filename, file_content)}
-        with httpx.Client(timeout=self.timeout_seconds) as client:
-            response = client.put(url, files=files)
+        response = self._http.put(path, files=files)
         if response.status_code >= 400:
             try:
                 detail = response.json()
