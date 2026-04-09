@@ -72,8 +72,36 @@ elif run:
             inter = result.get("inter_factor_correlation", {})
             labels = inter.get("labels", [])
             matrix = inter.get("matrix", [])
+            periods_info = result.get("periods", {})
 
             st.divider()
+            with st.expander("Periods used in this IC analysis", expanded=True):
+                per_metric = periods_info.get("per_metric", [])
+                if not per_metric:
+                    st.info("No period availability information returned.")
+                else:
+                    rows = []
+                    for item in per_metric:
+                        available = item.get("available_periods", []) or []
+                        used = item.get("used_periods", []) or []
+                        rows.append(
+                            {
+                                "Metric": item.get("metric_name", ""),
+                                "Available periods": len(available),
+                                "Used periods": len(used),
+                                "Used period list": ", ".join(map(str, used)),
+                            }
+                        )
+                    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+
+                inter_factor = periods_info.get("inter_factor", {}) or {}
+                shared_available = inter_factor.get("available_periods", []) or []
+                if shared_available:
+                    st.caption(
+                        f"Shared periods available for inter-factor correlation (intersection): {len(shared_available)}"
+                    )
+                    st.code(", ".join(map(str, shared_available)))
+
             st.markdown("### Section A — Summary (predictive power)")
             st.caption(
                 "Cross-sectional Spearman correlation (Rank IC) between each factor and forward returns, "

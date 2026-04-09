@@ -93,6 +93,10 @@ class ICAnalyzer:
               "forward_months": int,
               "predictive": list[dict]  # per metric: mean_rank_ic, ic_std, information_ratio, n_periods, series
               "inter_factor_correlation": {"labels": list[str], "matrix": list[list[float|None]]}
+              "periods": {
+                  "per_metric": list[dict],  # available/used periods per metric
+                  "inter_factor": dict,  # available/used shared periods for correlation matrix
+              },
               "warnings": list[str],
             }
         """
@@ -110,19 +114,30 @@ class ICAnalyzer:
             raise ValueError("Could not resolve at least two valid metrics from the database.")
 
         predictive: list[dict] = []
+        periods_per_metric: list[dict] = []
         for name in unique_names:
             mid = name_to_id.get(name)
             if mid is None:
                 continue
-            use_periods = periods
-            if use_periods is None:
-                use_periods = self._list_periods_for_metric(mid)
+            if periods is None:
+                available_periods = self._list_periods_for_metric(mid)
+            else:
+                available_periods = sorted({p for p in periods if p})
+            use_periods = available_periods
             points, w = self._ic_series_for_metric(
                 metric_id=mid,
                 forward_months=forward_months,
                 periods=use_periods,
             )
             warnings.extend(w)
+            used_periods = [p.period for p in points]
+            periods_per_metric.append(
+                {
+                    "metric_name": name,
+                    "available_periods": list(available_periods),
+                    "used_periods": list(used_periods),
+                }
+            )
             ic_vals = [p.ic for p in points]
             mean_ic = float(np.mean(ic_vals)) if ic_vals else None
             std_ic = float(np.std(ic_vals, ddof=1)) if len(ic_vals) >= 2 else None
@@ -138,6 +153,8 @@ class ICAnalyzer:
                     "ic_std": std_ic,
                     "information_ratio": ir,
                     "n_periods": len(points),
+                    "available_periods": list(available_periods),
+                    "used_periods": list(used_periods),
                     "series": [
                         {
                             "period": p.period,
@@ -152,6 +169,13 @@ class ICAnalyzer:
             )
 
         inter_labels = [n for n in unique_names if n in name_to_id]
+
+        if periods is None:
+            period_sets = [set(self._list_periods_for_metric(name_to_id[n])) for n in inter_labels]
+            inter_available_periods = sorted(set.intersection(*period_sets) if period_sets else set())
+        else:
+            inter_available_periods = sorted({p for p in periods if p})
+
         inter_matrix = self._inter_factor_spearman_matrix(
             name_to_id={n: name_to_id[n] for n in inter_labels},
             periods=periods,
@@ -165,6 +189,12 @@ class ICAnalyzer:
             "inter_factor_correlation": {
                 "labels": inter_labels,
                 "matrix": inter_matrix,
+            },
+            "periods": {
+                "per_metric": periods_per_metric,
+                "inter_factor": {
+                    "available_periods": inter_available_periods,
+                },
             },
             "warnings": warnings,
         }
