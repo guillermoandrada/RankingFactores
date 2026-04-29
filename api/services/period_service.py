@@ -29,6 +29,7 @@ class PeriodService:
         *,
         reader: str = "bloomberg",
         period: str | None = None,
+        index_code: str | None = None,
     ) -> dict[str, Any]:
         """
         Create a period from uploaded file contents.
@@ -39,12 +40,15 @@ class PeriodService:
             raise ValueError("File must be .xlsx or .xls.")
         if if_period_exists not in ("replace", "append"):
             raise ValueError("if_period_exists must be 'replace' or 'append'.")
-        if reader not in ("bloomberg", "reuters_metrics", "auto"):
-            raise ValueError("reader must be 'bloomberg', 'reuters_metrics', or 'auto'.")
+        if reader not in ("bloomberg", "bql", "reuters_metrics", "auto"):
+            raise ValueError("reader must be 'bloomberg', 'bql', 'reuters_metrics', or 'auto'.")
 
         normalized_period = (period or "").strip() or None
+        normalized_index_code = (index_code or "").strip() or None
         if reader == "reuters_metrics" and not normalized_period:
             raise ValueError("period is required when reader='reuters_metrics'.")
+        if reader == "bql" and not normalized_index_code:
+            raise ValueError("index_code is required when reader='bql'.")
 
         tmp_suffix = Path(filename).suffix or ".xlsx"
         with tempfile.NamedTemporaryFile(delete=False, suffix=tmp_suffix) as tmp:
@@ -58,6 +62,7 @@ class PeriodService:
                 period_override=normalized_period,
                 reader=reader,
                 if_period_exists=if_period_exists,
+                index_code_override=normalized_index_code,
             )
             return _import_result_to_dict(result)
         finally:

@@ -35,6 +35,7 @@ class DataImporter:
         period_override: Optional[str] = None,
         reader: str = "bloomberg",
         if_period_exists: str = "replace",
+        index_code_override: Optional[str] = None,
     ) -> ImportResult:
         """
         Import a single file into the database.
@@ -46,15 +47,9 @@ class DataImporter:
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"File not found: {filepath}")
 
-        index_code = self._reader.extract_index_code(filepath, reader)
-        if verbose:
-            print(f"--> Index code detected: {index_code}")
-
         df = self._reader.read(filepath, reader)
         if verbose:
             print(f"Read file: {filepath}")
-
-        self._validate_columns(df)
 
         df = df.dropna(subset=["Ticker"])
         period = period_override or self._reader.extract_period(filepath, reader)
@@ -63,6 +58,14 @@ class DataImporter:
                 f"Could not determine period for reader '{reader}'. "
                 "Provide a period manually."
             )
+        if reader == "bql":
+            df = self._enrich_bql_dataframe(df, period)
+
+        self._validate_columns(df)
+
+        index_code = index_code_override or self._reader.extract_index_code(filepath, reader)
+        if verbose:
+            print(f"--> Index code detected: {index_code}")
         if verbose:
             print(f"--> Period: {period}")
 
@@ -83,6 +86,40 @@ class DataImporter:
                 f"{result.metrics_count} metrics, {result.records_count} records."
             )
         return result
+
+    def _enrich_bql_dataframe(self, df: pd.DataFrame, period: str) -> pd.DataFrame:
+        tickers = df["Ticker"].dropna().astype(str).str.strip()
+        unique_tickers = [ticker for ticker in dict.fromkeys(tickers.tolist()) if ticker]
+        metadata_rows = self._db.get_security_metadata(period=period, tickers=unique_tickers)
+        metadata_by_ticker = {str(row["ticker"]).strip(): row for row in metadata_rows}
+
+        enriched = df.copy()
+        enriched["Market Cap (USD)"] = enriched["Ticker"].map(
+            lambda ticker: metadata_by_ticker.get(str(ticker).strip(), {}).get("market_cap_usd")
+        )
+
+        missing_metadata: list[str] = []
+        for ticker in unique_tickers:
+            matching_rows = enriched[enriched["Ticker"].astype(str).str.strip() == ticker]
+            row_values = matching_rows.iloc[0] if not matching_rows.empty else None
+            row = metadata_by_ticker.get(ticker, {})
+            if (
+                row_values is None
+                or not str(row_values.get("Long Name") or "").strip()
+                or not str(row_values.get("GICS Sector Name") or "").strip()
+                or not str(row_values.get("GICS Industry Group Name") or "").strip()
+                or row.get("market_cap_usd") is None
+                or pd.isna(row.get("market_cap_usd"))
+            ):
+                missing_metadata.append(ticker)
+
+        if missing_metadata:
+            raise ValueError(
+                "BQL upload requires Characteristics metadata and existing market cap for "
+                f"every ticker. Incomplete metadata for: {sorted(missing_metadata)}"
+            )
+
+        return enriched
 
     def _validate_columns(self, df: pd.DataFrame) -> None:
         if "Ticker" not in df.columns:

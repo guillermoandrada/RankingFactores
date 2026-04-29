@@ -53,6 +53,7 @@ def create_tables(engine: Engine) -> None:
         Column("id", Integer, primary_key=True, autoincrement=True),
         Column("ticker", String, unique=True, nullable=False),
         Column("long_name", String),
+        Column("market_cap_usd", Float),
         Column("sector_id", Integer, ForeignKey("sectors.sector_id")),
         Column("industry_id", Integer, ForeignKey("industries.industry_id")),
     )
@@ -103,6 +104,11 @@ def create_tables(engine: Engine) -> None:
             conn.rollback()
         try:
             conn.execute(text('ALTER TABLE metrics ADD COLUMN "n/a treatment" VARCHAR'))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        try:
+            conn.execute(text("ALTER TABLE securities ADD COLUMN market_cap_usd FLOAT"))
             conn.commit()
         except Exception:
             conn.rollback()

@@ -8,6 +8,7 @@ import pandas as pd
 
 from modules.ingestion.readers import (
     BaseFileReader,
+    BqlFileReader,
     BloombergFileReader,
     ReutersMetricsFileReader,
 )
@@ -22,6 +23,7 @@ class FileReader:
             self._default_reader_name = "custom"
         else:
             self._readers = {
+                "bql": BqlFileReader(),
                 "bloomberg": BloombergFileReader(),
                 "reuters_metrics": ReutersMetricsFileReader(),
             }
@@ -48,7 +50,7 @@ class FileReader:
         return reader
 
     def _auto_detect_reader(self, filepath: str) -> BaseFileReader:
-        for name in ("reuters_metrics", self._default_reader_name):
+        for name in ("reuters_metrics", "bql", self._default_reader_name):
             reader = self._readers.get(name)
             if reader and reader.can_read(filepath):
                 return reader

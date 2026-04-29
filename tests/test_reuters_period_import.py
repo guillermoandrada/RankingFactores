@@ -102,6 +102,7 @@ def test_period_service_passes_reader_and_manual_period() -> None:
         if_period_exists="append",
         reader="reuters_metrics",
         period="2024 Q1",
+        index_code=None,
     )
 
     assert result["success"] is True
@@ -139,12 +140,14 @@ def test_periods_endpoint_reuters_replace(monkeypatch) -> None:
             if_period_exists: str,
             reader: str,
             period: str | None = None,
+            index_code: str | None = None,
         ):
             return {
                 "success": True,
                 "period": period,
                 "reader": reader,
                 "if_period_exists": if_period_exists,
+                "index_code": index_code,
                 "bytes": len(file_contents),
                 "filename": filename,
             }
@@ -183,12 +186,14 @@ def test_periods_endpoint_reuters_append(monkeypatch) -> None:
             if_period_exists: str,
             reader: str,
             period: str | None = None,
+            index_code: str | None = None,
         ):
             return {
                 "success": True,
                 "period": period,
                 "reader": reader,
                 "if_period_exists": if_period_exists,
+                "index_code": index_code,
                 "bytes": len(file_contents),
                 "filename": filename,
             }

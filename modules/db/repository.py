@@ -299,6 +299,7 @@ class FinancialDatabase:
             select(
                 tbl_sec.c.ticker,
                 tbl_sec.c.long_name,
+                tbl_sec.c.market_cap_usd,
                 tbl_sector.c.sector_name,
                 tbl_industry.c.industry_name,
             )
@@ -312,11 +313,17 @@ class FinancialDatabase:
             )
             .outerjoin(
                 tbl_sector,
-                tbl_sector.c.sector_id == tbl_class.c.sector_id,
+                tbl_sector.c.sector_id == func.coalesce(
+                    tbl_class.c.sector_id,
+                    tbl_sec.c.sector_id,
+                ),
             )
             .outerjoin(
                 tbl_industry,
-                tbl_industry.c.industry_id == tbl_class.c.industry_id,
+                tbl_industry.c.industry_id == func.coalesce(
+                    tbl_class.c.industry_id,
+                    tbl_sec.c.industry_id,
+                ),
             )
         )
         if tickers:
@@ -330,8 +337,9 @@ class FinancialDatabase:
             result.append({
                 "ticker": row[0],
                 "name": row[1],
-                "sector": row[2],
-                "industry": row[3],
+                "market_cap_usd": row[2],
+                "sector": row[3],
+                "industry": row[4],
             })
         return result
 
@@ -594,6 +602,7 @@ class FinancialDatabase:
             for _, row in companies.iterrows():
                 ticker_val = row["Ticker"]
                 long_name_val = row.get("Long Name")
+                market_cap_val = row.get("Market Cap (USD)")
                 sector_name = row.get("GICS Sector Name")
                 industry_name = row.get("GICS Industry Group Name")
                 existing_security = conn.execute(
@@ -613,6 +622,7 @@ class FinancialDatabase:
                     tbl_sec,
                     ticker_val,
                     long_name_val,
+                    market_cap_val,
                     sector_id,
                     industry_id,
                 )
@@ -812,6 +822,7 @@ class FinancialDatabase:
         tbl,
         ticker: str,
         long_name,
+        market_cap_usd,
         sector_id,
         industry_id,
     ) -> int:
@@ -819,6 +830,7 @@ class FinancialDatabase:
             select(
                 tbl.c.id,
                 tbl.c.long_name,
+                tbl.c.market_cap_usd,
                 tbl.c.sector_id,
                 tbl.c.industry_id,
             ).where(tbl.c.ticker == ticker)
@@ -829,9 +841,11 @@ class FinancialDatabase:
             updates = {}
             if long_name and (row[1] is None or row[1] == ""):
                 updates["long_name"] = long_name
-            if sector_id is not None and row[2] is None:
+            if market_cap_usd is not None and not pd.isna(market_cap_usd) and row[2] is None:
+                updates["market_cap_usd"] = float(market_cap_usd)
+            if sector_id is not None and row[3] is None:
                 updates["sector_id"] = sector_id
-            if industry_id is not None and row[3] is None:
+            if industry_id is not None and row[4] is None:
                 updates["industry_id"] = industry_id
             if updates:
                 conn.execute(tbl.update().where(tbl.c.id == sec_id).values(**updates))
@@ -841,6 +855,11 @@ class FinancialDatabase:
             tbl.insert().values(
                 ticker=ticker,
                 long_name=long_name,
+                market_cap_usd=(
+                    float(market_cap_usd)
+                    if market_cap_usd is not None and not pd.isna(market_cap_usd)
+                    else None
+                ),
                 sector_id=sector_id,
                 industry_id=industry_id,
             )

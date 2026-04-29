@@ -24,7 +24,7 @@ async def create_period(
     file: UploadFile = File(...),
     reader: str = Query(
         default="bloomberg",
-        description="Reader name: 'bloomberg', 'reuters_metrics', or 'auto'.",
+        description="Reader name: 'bloomberg', 'bql', 'reuters_metrics', or 'auto'.",
     ),
     if_period_exists: str = Query(
         default="replace",
@@ -33,6 +33,10 @@ async def create_period(
     period: str | None = Query(
         default=None,
         description="Manual period override. Required for readers that do not embed the period in the file.",
+    ),
+    index_code: str | None = Query(
+        default=None,
+        description="Manual index code. Required for BQL uploads.",
     ),
 ):
     """
@@ -44,10 +48,10 @@ async def create_period(
             status_code=400,
             detail="File must be .xlsx or .xls.",
         )
-    if reader not in ("bloomberg", "reuters_metrics", "auto"):
+    if reader not in ("bloomberg", "bql", "reuters_metrics", "auto"):
         raise HTTPException(
             status_code=400,
-            detail="reader must be 'bloomberg', 'reuters_metrics', or 'auto'.",
+            detail="reader must be 'bloomberg', 'bql', 'reuters_metrics', or 'auto'.",
         )
     if if_period_exists not in ("replace", "append"):
         raise HTTPException(
@@ -59,6 +63,11 @@ async def create_period(
             status_code=400,
             detail="period is required when reader='reuters_metrics'.",
         )
+    if reader == "bql" and not (index_code or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="index_code is required when reader='bql'.",
+        )
 
     try:
         contents = await file.read()
@@ -68,6 +77,7 @@ async def create_period(
             if_period_exists=if_period_exists,
             reader=reader,
             period=period,
+            index_code=index_code,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

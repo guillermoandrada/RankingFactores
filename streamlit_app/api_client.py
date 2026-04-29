@@ -64,6 +64,7 @@ class RankingApiClient:
         *,
         reader: str = "bloomberg",
         period: str | None = None,
+        index_code: str | None = None,
     ) -> dict[str, Any]:
         """Create period from uploaded file using the selected reader."""
         params: dict[str, Any] = {
@@ -72,6 +73,8 @@ class RankingApiClient:
         }
         if period:
             params["period"] = period
+        if index_code:
+            params["index_code"] = index_code
         files = {"file": (filename, file_content)}
         response = self._http.post("/periods", params=params, files=files)
         if response.status_code >= 400:

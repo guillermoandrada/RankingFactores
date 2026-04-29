@@ -26,19 +26,24 @@ tabs = st.tabs(["Create", "View & Edit", "Delete"])
 
 # --- Create tab ---
 with tabs[0]:
-    render_section("Create period from file", "Upload Bloomberg or Reuters Excel (.xlsx, .xls).")
+    render_section("Create period from file", "Upload Bloomberg, BQL, or Reuters Excel (.xlsx, .xls).")
     upload_success_message = st.session_state.pop("period_upload_success", None)
     if upload_success_message:
         st.success(upload_success_message)
 
     reader = st.selectbox(
         "Reader",
-        options=["bloomberg", "reuters_metrics"],
+        options=["bloomberg", "bql", "reuters_metrics"],
         key="period_create_reader",
-        format_func=lambda value: "Bloomberg" if value == "bloomberg" else "Reuters Metrics",
+        format_func=lambda value: {
+            "bloomberg": "Bloomberg",
+            "bql": "BQL",
+            "reuters_metrics": "Reuters Metrics",
+        }[value],
     )
 
     target_period = None
+    target_index_code = None
     existing_periods_for_append: list[str] = []
     upload_behavior = "replace"
 
@@ -86,6 +91,17 @@ with tabs[0]:
                 help="Required for Reuters uploads because the file does not encode the period.",
             )
             st.caption("This creates the period if it does not exist, or replaces it if it already exists.")
+    elif reader == "bql":
+        st.caption(
+            "BQL uploads use `Characteristics` for name/sector/industry, read factors from "
+            "`Current`, `Past`, and `Estimated`, infer the period from `Config!B1`, and "
+            "require an index code at upload time."
+        )
+        target_index_code = st.text_input(
+            "Index code",
+            key="period_bql_index_code",
+            help="Required for BQL uploads because the workbook does not encode the index.",
+        )
     else:
         st.caption("Bloomberg uploads infer the period directly from the file.")
 
@@ -94,7 +110,7 @@ with tabs[0]:
         type=["xlsx", "xls"],
         key="period_create_file",
     )
-    if reader == "bloomberg":
+    if reader in ("bloomberg", "bql"):
         upload_behavior = st.selectbox(
             "If period exists",
             options=["replace", "append"],
@@ -109,6 +125,8 @@ with tabs[0]:
             st.error("No existing periods are available for append.")
         elif reader == "reuters_metrics" and not str(target_period or "").strip():
             st.error("Enter or select a period for the Reuters upload.")
+        elif reader == "bql" and not str(target_index_code or "").strip():
+            st.error("Enter an index code for the BQL upload.")
         else:
             try:
                 content = file.read()
@@ -118,6 +136,7 @@ with tabs[0]:
                     if_period_exists=upload_behavior,
                     reader=reader,
                     period=target_period,
+                    index_code=target_index_code,
                 )
                 st.session_state["period_upload_success"] = (
                     f"Period '{result.get('period', '')}' uploaded successfully. "
