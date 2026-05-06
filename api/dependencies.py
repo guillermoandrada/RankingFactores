@@ -4,6 +4,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from api.services.period_service import PeriodService
+from modules.analytics.zscore import ZScoreCalculator
 from modules.config import RankingProfileResolver, RankingProfileStore
 from modules.config.derived_metrics import DerivedMetricStore
 from modules.db import FinancialDatabase
@@ -12,6 +13,7 @@ from modules.market_data import YFinancePriceProvider
 
 if TYPE_CHECKING:
     from api.services.backtest_service import BacktestService
+    from api.services.ic_service import ICService
 
 
 @lru_cache(maxsize=1)
@@ -71,3 +73,15 @@ def get_backtest_service() -> BacktestService:
         portfolio_service=get_portfolio_service(),
         price_provider=get_price_provider(),
     )
+
+
+@lru_cache(maxsize=1)
+def get_zscore_calculator() -> ZScoreCalculator:
+    return ZScoreCalculator(engine=get_db().engine, derived_store=get_derived_store())
+
+
+@lru_cache(maxsize=1)
+def get_ic_service() -> ICService:
+    from api.services.ic_service import ICService
+
+    return ICService(db=get_db())

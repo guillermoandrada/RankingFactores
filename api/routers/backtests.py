@@ -15,7 +15,7 @@ async def run_portfolio_backtest(request: PortfolioBacktestBody):
     """Backtest an already-built portfolio over a date range."""
     try:
         return dependencies.get_backtest_service().backtest_portfolio(request)
-    except (ValueError, KeyError) as exc:
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -37,5 +37,5 @@ async def run_strategy_backtest(request: StrategyBacktestBody):
         )
     try:
         return dependencies.get_backtest_service().backtest_strategy(request)
-    except (ValueError, KeyError) as exc:
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

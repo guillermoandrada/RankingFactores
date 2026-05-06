@@ -9,6 +9,8 @@ from typing import Any
 
 PROFILE_PATH = Path(__file__).with_name("ranking_profiles.json")
 
+_MISSING_MTIME = -1.0
+
 
 def _profile_to_transform_chain(profile: dict[str, Any]) -> list[dict[str, Any]]:
     """
@@ -177,16 +179,30 @@ class RankingProfileStore:
 
     def __init__(self, path: Path = PROFILE_PATH) -> None:
         self.path = path
+        self._cache: dict[str, Any] | None = None
+        self._cache_mtime: float = _MISSING_MTIME
 
     def load(self) -> dict[str, Any]:
-        if not self.path.exists():
-            raise FileNotFoundError(f"Ranking profile file not found: {self.path}")
-        with self.path.open("r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            mtime = self.path.stat().st_mtime if self.path.exists() else _MISSING_MTIME
+        except OSError:
+            mtime = _MISSING_MTIME
+        if self._cache is None or mtime != self._cache_mtime:
+            if not self.path.exists():
+                raise FileNotFoundError(f"Ranking profile file not found: {self.path}")
+            with self.path.open("r", encoding="utf-8") as f:
+                self._cache = json.load(f)
+            self._cache_mtime = mtime
+        return deepcopy(self._cache)
 
     def save(self, data: dict[str, Any]) -> None:
         with self.path.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
+        self._cache = deepcopy(data)
+        try:
+            self._cache_mtime = self.path.stat().st_mtime
+        except OSError:
+            self._cache_mtime = _MISSING_MTIME
 
     def list_profiles(self) -> dict[str, Any]:
         data = self.load()

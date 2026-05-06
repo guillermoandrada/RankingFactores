@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
 
 from api.dependencies import get_db, get_period_service
 from api.schemas.periods import PeriodEditBody
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/periods", tags=["periods"])
 
@@ -84,6 +88,7 @@ async def create_period(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail="File not found") from exc
     except Exception:
+        logger.exception("Unexpected error during period import (file=%s)", file.filename)
         raise HTTPException(
             status_code=500,
             detail="An unexpected error occurred while importing the file.",
@@ -123,6 +128,7 @@ async def update_period(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail="File not found") from exc
     except Exception:
+        logger.exception("Unexpected error during period update (period=%s)", period)
         raise HTTPException(
             status_code=500,
             detail="An unexpected error occurred while updating the period.",

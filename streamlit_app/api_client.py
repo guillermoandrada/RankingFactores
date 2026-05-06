@@ -48,6 +48,10 @@ class RankingApiClient:
                 return {}
         return response.content
 
+    def get_stats(self) -> dict[str, Any]:
+        """Return KPI summary stats for the Home page dashboard."""
+        return self._request("GET", "/reference/stats")
+
     def list_periods(self) -> list[str]:
         payload = self._request("GET", "/reference/periods")
         return payload.get("periods", [])
@@ -329,6 +333,21 @@ class RankingApiClient:
         }
         path = f"/scorings/{quote(period, safe='')}/batch"
         return self._request("POST", path, json=body)
+
+    def run_ic_analysis(
+        self,
+        metric_names: list[str],
+        forward_months: int,
+        periods: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Run multivariate IC analysis (Rank IC + inter-factor Spearman correlation)."""
+        body: dict[str, Any] = {
+            "metric_names": metric_names,
+            "forward_months": forward_months,
+        }
+        if periods is not None:
+            body["periods"] = periods
+        return self._request("POST", "/ic", json=body)
 
     def export_ranking_xlsx(
         self,

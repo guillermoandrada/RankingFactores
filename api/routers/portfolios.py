@@ -19,6 +19,6 @@ async def construct_portfolio(period: str, request: PortfolioBuildBody):
 
     try:
         return get_portfolio_service().construct_portfolio(period, request)
-    except (ValueError, KeyError) as exc:
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

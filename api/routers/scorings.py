@@ -43,7 +43,7 @@ async def compute_period_scoring_batch(period: str, request: BatchScoringBody):
                 "warnings": warnings,
                 "ranking": records,
             }
-        except (ValueError, KeyError) as exc:
+        except ValueError as exc:
             return scope_key, {"error": str(exc), "ranking": []}
 
     results: dict[str, dict] = {}
@@ -98,5 +98,5 @@ async def compute_period_scoring(period: str, request: ComputePeriodScoringBody)
             "warnings": warnings,
             "ranking": records,
         }
-    except (ValueError, KeyError) as exc:
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

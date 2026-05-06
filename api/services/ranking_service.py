@@ -4,8 +4,8 @@ import io
 
 import pandas as pd
 
-from api.dependencies import get_db, get_profile_resolver
-from modules.analytics import FactorScoringService, RankingEngine, ZScoreCalculator
+from api.dependencies import get_db, get_profile_resolver, get_zscore_calculator
+from modules.analytics import FactorScoringService, RankingEngine
 
 
 def get_metric_names_from_profile(profile: dict) -> list[str]:
@@ -67,8 +67,7 @@ def compute_ranking(
     if not metric_names:
         raise ValueError("No metric weights configured.")
 
-    from api.dependencies import get_derived_store
-    calculator = ZScoreCalculator(engine=db.engine, derived_store=get_derived_store())
+    calculator = get_zscore_calculator()
     ranking_engine = RankingEngine(zsuffix="_zscore")
     factor_service = FactorScoringService(
         calculator=calculator,

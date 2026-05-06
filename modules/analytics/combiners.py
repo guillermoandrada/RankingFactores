@@ -37,7 +37,10 @@ class LinearCombiner(BaseCombiner):
         for metric_name, weight in weights.items():
             col = f"{metric_name}{zsuffix}"
             if col not in df.columns:
-                raise KeyError(f"Column '{col}' not found in DataFrame.")
+                raise ValueError(
+                    f"Metric '{metric_name}' (column '{col}') is not available "
+                    "for the selected period/scope. Check the scoring profile."
+                )
             sign = 1.0 if direction_map.get(metric_name, True) else -1.0
             score += sign * float(weight) * df[col].fillna(0.0)
         return score
@@ -57,7 +60,10 @@ class SoftplusCombiner(BaseCombiner):
         for metric_name, weight in weights.items():
             col = f"{metric_name}{zsuffix}"
             if col not in df.columns:
-                raise KeyError(f"Column '{col}' not found in DataFrame.")
+                raise ValueError(
+                    f"Metric '{metric_name}' (column '{col}') is not available "
+                    "for the selected period/scope. Check the scoring profile."
+                )
             sign = 1.0 if direction_map.get(metric_name, True) else -1.0
             z = df[col].fillna(0.0).to_numpy(dtype="float64")
             z = np.clip(z, -50, 50)

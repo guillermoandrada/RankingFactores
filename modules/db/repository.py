@@ -380,6 +380,37 @@ class FinancialDatabase:
             for r in rows
         ]
 
+    def get_summary_stats(self) -> dict:
+        """Return KPI counts and per-period coverage in a single pass."""
+        tbl_fund = self._get_table("fundamental_values")
+        tbl_sec = self._get_table("securities")
+        tbl_metric = self._get_table("metrics")
+        with self._engine.connect() as conn:
+            coverage_rows = conn.execute(
+                select(
+                    tbl_fund.c.period,
+                    func.count(func.distinct(tbl_fund.c.security_id)).label("securities"),
+                    func.count(func.distinct(tbl_fund.c.metric_id)).label("metrics"),
+                )
+                .group_by(tbl_fund.c.period)
+                .order_by(tbl_fund.c.period.desc())
+            ).fetchall()
+            total_db_metrics = conn.execute(
+                select(func.count()).select_from(tbl_metric)
+            ).scalar()
+            total_securities = conn.execute(
+                select(func.count()).select_from(tbl_sec)
+            ).scalar()
+        return {
+            "period_count": len(coverage_rows),
+            "total_db_metrics": int(total_db_metrics or 0),
+            "total_securities": int(total_securities or 0),
+            "coverage": [
+                {"period": r[0], "securities": r[1], "metrics": r[2]}
+                for r in coverage_rows
+            ],
+        }
+
     def create_metric(
         self,
         metric_name: str,
@@ -576,6 +607,9 @@ class FinancialDatabase:
         mode: 'replace' (default) overwrites period; 'append' merges new metrics/securities.
         preserve_existing_classification: when True in append mode, existing
         securities keep their current period/base sector and industry mapping.
+
+        The entire operation runs inside a single transaction: any failure at any
+        phase rolls back all changes, leaving the database consistent.
         """
         if "Ticker" not in df.columns:
             raise ValueError(
@@ -592,6 +626,12 @@ class FinancialDatabase:
         tbl_classification = self._get_table("security_classification")
 
         companies = df[FIXED_COLUMNS].copy().drop_duplicates(subset=["Ticker"])
+        metric_cols = [
+            c
+            for c in df.columns
+            if c not in FIXED_COLUMNS and not str(c).startswith("Unnamed")
+        ]
+
         ticker_map: dict[str, int] = {}
         classification_map: dict[str, tuple[int | None, int | None]] = {}
         sector_cache: dict[str, int] = {}
@@ -599,21 +639,18 @@ class FinancialDatabase:
         new_security_ids: set[int] = set()
 
         with self._engine.begin() as conn:
+            # --- Phase 1: upsert sectors, industries, securities ---
             for _, row in companies.iterrows():
                 ticker_val = row["Ticker"]
-                long_name_val = row.get("Long Name")
-                market_cap_val = row.get("Market Cap (USD)")
-                sector_name = row.get("GICS Sector Name")
-                industry_name = row.get("GICS Industry Group Name")
                 existing_security = conn.execute(
                     select(tbl_sec.c.id).where(tbl_sec.c.ticker == ticker_val)
                 ).first()
 
                 sector_id = self._resolve_sector(
-                    conn, tbl_sector, sector_name, sector_cache
+                    conn, tbl_sector, row.get("GICS Sector Name"), sector_cache
                 )
                 industry_id = self._resolve_industry(
-                    conn, tbl_industry, industry_name, industry_cache
+                    conn, tbl_industry, row.get("GICS Industry Group Name"), industry_cache
                 )
                 classification_map[ticker_val] = (sector_id, industry_id)
 
@@ -621,8 +658,8 @@ class FinancialDatabase:
                     conn,
                     tbl_sec,
                     ticker_val,
-                    long_name_val,
-                    market_cap_val,
+                    row.get("Long Name"),
+                    row.get("Market Cap (USD)"),
                     sector_id,
                     industry_id,
                 )
@@ -630,6 +667,7 @@ class FinancialDatabase:
                 if existing_security is None:
                     new_security_ids.add(sec_id)
 
+            # --- Phase 2: period-scoped security classifications ---
             sec_ids = list(ticker_map.values())
             if mode == "replace":
                 conn.execute(
@@ -668,48 +706,34 @@ class FinancialDatabase:
                     )
                 )
 
-        if index_code and str(index_code).strip():
-            code = str(index_code).strip()
-            self._update_index_membership(
-                tbl_indices,
-                tbl_index_membership,
-                code,
-                period,
-                list(ticker_map.values()),
+            # --- Phase 3: index membership ---
+            if index_code and str(index_code).strip():
+                self._write_index_membership(
+                    conn, tbl_indices, tbl_index_membership,
+                    str(index_code).strip(), period, sec_ids,
+                )
+
+            # --- Phase 4: metric resolution ---
+            metric_cache: dict[str, int] = {}
+            for m_name in metric_cols:
+                metric_cache[m_name] = self._resolve_metric(conn, tbl_metric, m_name)
+
+            # --- Phase 5: melt and write fundamental values ---
+            df_long = df.melt(
+                id_vars=["Ticker"],
+                value_vars=metric_cols,
+                var_name="metric_name",
+                value_name="value",
             )
+            df_long["security_id"] = df_long["Ticker"].map(ticker_map)
+            df_long["period"] = period
+            df_long["metric_id"] = df_long["metric_name"].map(metric_cache)
+            # Keep NA fundamental values; NaN in `value` is inserted as SQL NULL.
+            df_long = df_long.dropna(subset=["security_id", "metric_id"])
+            df_long["value"] = pd.to_numeric(df_long["value"], errors="coerce")
 
-        metric_cols = [
-            c
-            for c in df.columns
-            if c not in FIXED_COLUMNS and not str(c).startswith("Unnamed")
-        ]
-
-        df_long = df.melt(
-            id_vars=["Ticker"],
-            value_vars=metric_cols,
-            var_name="metric_name",
-            value_name="value",
-        )
-        df_long["security_id"] = df_long["Ticker"].map(ticker_map)
-        df_long["period"] = period
-
-        metric_cache: dict[str, int] = {}
-        with self._engine.begin() as conn:
-            for m_name in df_long["metric_name"].dropna().astype(str).unique().tolist():
-                if m_name not in metric_cache:
-                    metric_cache[m_name] = self._resolve_metric(
-                        conn, tbl_metric, m_name
-                    )
-
-        df_long["metric_id"] = df_long["metric_name"].map(metric_cache)
-        # Keep NA fundamental values; only IDs are required for persistence.
-        # NaN in `value` is inserted as SQL NULL.
-        df_long = df_long.dropna(subset=["security_id", "metric_id"])
-        df_long["value"] = pd.to_numeric(df_long["value"], errors="coerce")
-
-        with self._engine.begin() as conn:
+            data_cols = ["security_id", "metric_id", "value", "period"]
             if mode == "append":
-                # Load existing for period, merge (new overwrites overlap)
                 existing = pd.read_sql_query(
                     select(
                         tbl_fund.c.security_id,
@@ -718,40 +742,27 @@ class FinancialDatabase:
                     ).where(tbl_fund.c.period == period),
                     con=conn,
                 )
+                conn.execute(delete(tbl_fund).where(tbl_fund.c.period == period))
                 if not existing.empty:
                     existing["period"] = period
-                    merge_keys = ["security_id", "metric_id", "period"]
-                    existing = existing[merge_keys + ["value"]]
-                    new_data = df_long[["security_id", "metric_id", "value", "period"]]
-                    combined = pd.concat([existing, new_data], ignore_index=True)
-                    combined = combined.drop_duplicates(
-                        subset=["security_id", "metric_id", "period"],
-                        keep="last",
+                    combined = pd.concat(
+                        [existing[data_cols], df_long[data_cols]],
+                        ignore_index=True,
                     )
-                    conn.execute(delete(tbl_fund).where(tbl_fund.c.period == period))
+                    combined = combined.drop_duplicates(
+                        subset=["security_id", "metric_id", "period"], keep="last"
+                    )
                     combined.to_sql(
-                        "fundamental_values",
-                        con=conn,
-                        if_exists="append",
-                        index=False,
+                        "fundamental_values", con=conn, if_exists="append", index=False
                     )
                 else:
-                    conn.execute(delete(tbl_fund).where(tbl_fund.c.period == period))
-                    data = df_long[["security_id", "metric_id", "value", "period"]]
-                    data.to_sql(
-                        "fundamental_values",
-                        con=conn,
-                        if_exists="append",
-                        index=False,
+                    df_long[data_cols].to_sql(
+                        "fundamental_values", con=conn, if_exists="append", index=False
                     )
             else:
                 conn.execute(delete(tbl_fund).where(tbl_fund.c.period == period))
-                data = df_long[["security_id", "metric_id", "value", "period"]]
-                data.to_sql(
-                    "fundamental_values",
-                    con=conn,
-                    if_exists="append",
-                    index=False,
+                df_long[data_cols].to_sql(
+                    "fundamental_values", con=conn, if_exists="append", index=False
                 )
 
         return ImportResult(
@@ -866,37 +877,38 @@ class FinancialDatabase:
         )
         return ins.inserted_primary_key[0]
 
-    def _update_index_membership(
+    def _write_index_membership(
         self,
+        conn,
         tbl_indices,
         tbl_membership,
         code: str,
         period: str,
         security_ids: list[int],
     ) -> None:
-        with self._engine.begin() as conn:
-            row = conn.execute(
-                select(tbl_indices.c.index_id).where(tbl_indices.c.name == code)
-            ).first()
-            if row:
-                index_id = row[0]
-            else:
-                ins = conn.execute(tbl_indices.insert().values(name=code))
-                index_id = ins.inserted_primary_key[0]
+        """Write index membership within an existing connection/transaction."""
+        row = conn.execute(
+            select(tbl_indices.c.index_id).where(tbl_indices.c.name == code)
+        ).first()
+        if row:
+            index_id = row[0]
+        else:
+            ins = conn.execute(tbl_indices.insert().values(name=code))
+            index_id = ins.inserted_primary_key[0]
 
-            conn.execute(
-                delete(tbl_membership).where(
-                    and_(
-                        tbl_membership.c.index_id == index_id,
-                        tbl_membership.c.period == period,
-                    )
+        conn.execute(
+            delete(tbl_membership).where(
+                and_(
+                    tbl_membership.c.index_id == index_id,
+                    tbl_membership.c.period == period,
                 )
             )
-            for sec_id in security_ids:
-                conn.execute(
-                    tbl_membership.insert().values(
-                        index_id=index_id,
-                        security_id=sec_id,
-                        period=period,
-                    )
+        )
+        for sec_id in security_ids:
+            conn.execute(
+                tbl_membership.insert().values(
+                    index_id=index_id,
+                    security_id=sec_id,
+                    period=period,
                 )
+            )

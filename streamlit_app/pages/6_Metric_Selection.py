@@ -7,10 +7,8 @@ import pandas as pd
 import seaborn as sns
 import streamlit as st
 
-from modules.analytics.ic_analyzer import ICAnalyzer
-from modules.db import FinancialDatabase
-
-from streamlit_app.ui.layout import inject_custom_css, render_page_header
+from streamlit_app.api_client import ApiError
+from streamlit_app.ui import get_api_client, inject_custom_css, render_page_header, render_sidebar_api_test
 
 st.set_page_config(page_title="Metric Selection (IC)", layout="wide")
 inject_custom_css()
@@ -20,11 +18,15 @@ render_page_header(
     "Spearman correlation between factors on shared cross-sections (colinearity).",
 )
 
-db = FinancialDatabase()
-analyzer = ICAnalyzer(db=db)
+client = get_api_client("ic")
+render_sidebar_api_test(client, "ic_test_api")
 
-metrics = db.list_metrics()
-metric_names = sorted([m["metric_name"] for m in metrics if m.get("metric_name")])
+try:
+    db_metrics = client.list_db_metrics()
+    metric_names = sorted([m["metric_name"] for m in db_metrics if m.get("metric_name")])
+except ApiError as exc:
+    st.error(f"Cannot load metrics: {exc}")
+    metric_names = []
 
 with st.container(border=True):
     st.markdown("**Inputs**")
@@ -56,11 +58,11 @@ elif run:
     else:
         with st.spinner("Computing Rank IC and inter-factor correlations (price fetch may take a while)..."):
             try:
-                result = analyzer.analyze_multivariate(
+                result = client.run_ic_analysis(
                     metric_names=selected_metrics,
                     forward_months=int(forward_months),
                 )
-            except ValueError as exc:
+            except (ApiError, ValueError) as exc:
                 st.error(str(exc))
                 result = None
 

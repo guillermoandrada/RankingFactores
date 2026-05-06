@@ -4,9 +4,22 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from api.dependencies import get_db, get_derived_store
+from api.dependencies import get_db, get_derived_store, get_profile_store
 
 router = APIRouter(prefix="/reference", tags=["reference"])
+
+
+@router.get("/stats")
+async def get_stats():
+    """Return KPI summary: period count, security count, metric counts, and per-period coverage."""
+    stats = get_db().get_summary_stats()
+    derived_count = len(get_derived_store().list_formulas())
+    profile_count = len(get_profile_store().list_profiles())
+    return {
+        **stats,
+        "total_derived_metrics": derived_count,
+        "total_scoring_profiles": profile_count,
+    }
 
 
 @router.get("/periods")
