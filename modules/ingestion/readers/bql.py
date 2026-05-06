@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
+from zipfile import BadZipFile
 
 import pandas as pd
 
@@ -8,7 +9,8 @@ from modules.ingestion.readers.base import BaseFileReader
 from modules.ingestion.readers.bloomberg import _format_date_as_period
 
 _DATA_SHEETS = ("Current", "Past", "Estimated")
-_CHARACTERISTICS_SHEET = "Characteristics"
+_NAME_SHEET = "Name"
+_CLASSIFICATION_SHEET = "Classification"
 _CONFIG_SHEET = "Config"
 
 
@@ -20,17 +22,21 @@ class BqlFileReader(BaseFileReader):
             return False
         try:
             workbook = pd.ExcelFile(filepath)
-        except Exception:
+        except (BadZipFile, OSError, ValueError):
             return False
         sheet_names = {str(name).strip() for name in workbook.sheet_names}
-        required_sheets = set(_DATA_SHEETS) | {_CHARACTERISTICS_SHEET, _CONFIG_SHEET}
+        required_sheets = set(_DATA_SHEETS) | {
+            _NAME_SHEET,
+            _CLASSIFICATION_SHEET,
+            _CONFIG_SHEET,
+        }
         return required_sheets.issubset(sheet_names)
 
     def read(self, filepath: str) -> pd.DataFrame:
         if not self.can_read(filepath):
             raise ValueError(
-                "BQL workbook must contain sheets 'Characteristics', 'Current', "
-                "'Past', 'Estimated', and 'Config'."
+                "BQL workbook must contain sheets 'Name', 'Classification', "
+                "'Current', 'Past', 'Estimated', and 'Config'."
             )
 
         sheet_frames: list[pd.DataFrame] = []
@@ -51,8 +57,13 @@ class BqlFileReader(BaseFileReader):
         for frame in sheet_frames[1:]:
             combined = combined.merge(frame, on="Ticker", how="outer")
 
-        characteristics = self._read_characteristics_sheet(filepath)
-        combined = characteristics.merge(combined, on="Ticker", how="right")
+        names = self._read_name_sheet(filepath)
+        classifications = self._read_classification_sheet(filepath)
+        combined = names.merge(classifications, on="Ticker", how="outer").merge(
+            combined,
+            on="Ticker",
+            how="right",
+        )
         combined = combined.dropna(how="all")
         combined["Ticker"] = combined["Ticker"].replace("", pd.NA)
         return combined
@@ -60,7 +71,7 @@ class BqlFileReader(BaseFileReader):
     def extract_period(self, filepath: str) -> str:
         try:
             config_df = pd.read_excel(filepath, sheet_name=_CONFIG_SHEET, header=None)
-        except Exception:
+        except (BadZipFile, OSError, ValueError):
             return "UNKNOWN"
 
         if config_df.shape[0] < 1 or config_df.shape[1] < 2:
@@ -70,8 +81,16 @@ class BqlFileReader(BaseFileReader):
         return period if period else "UNKNOWN"
 
     def extract_index_code(self, filepath: str) -> Optional[str]:
-        _ = filepath
-        return None
+        try:
+            config_df = pd.read_excel(filepath, sheet_name=_CONFIG_SHEET, header=None)
+        except (BadZipFile, OSError, ValueError):
+            return None
+
+        if config_df.shape[0] < 2 or config_df.shape[1] < 2:
+            return None
+
+        raw_value = str(config_df.iat[1, 1] or "").strip()
+        return raw_value or None
 
     def _read_data_sheet(self, filepath: str, sheet_name: str) -> pd.DataFrame:
         raw = pd.read_excel(filepath, sheet_name=sheet_name, header=0)
@@ -108,33 +127,64 @@ class BqlFileReader(BaseFileReader):
 
         return normalized
 
-    def _read_characteristics_sheet(self, filepath: str) -> pd.DataFrame:
-        raw = pd.read_excel(filepath, sheet_name=_CHARACTERISTICS_SHEET, header=0)
+    def _read_name_sheet(self, filepath: str) -> pd.DataFrame:
+        raw = pd.read_excel(filepath, sheet_name=_NAME_SHEET, header=0)
         raw = raw.rename(columns=lambda value: str(value).strip())
         raw = raw.iloc[1:].reset_index(drop=True)
         raw = raw.dropna(axis=1, how="all").dropna(axis=0, how="all")
 
         if raw.empty:
-            raise ValueError("BQL sheet 'Characteristics' is empty.")
-        if raw.shape[1] < 4:
+            raise ValueError("BQL sheet 'Name' is empty.")
+        if raw.shape[1] < 2:
             raise ValueError(
-                "BQL sheet 'Characteristics' must contain Bloomberg code, name, sector, "
-                "and industry columns."
+                "BQL sheet 'Name' must contain Bloomberg code and security name columns."
             )
 
-        source_columns = list(raw.columns[:4])
+        source_columns = list(raw.columns[:2])
         renamed = raw.rename(
             columns={
                 source_columns[0]: "Ticker",
                 source_columns[1]: "Long Name",
-                source_columns[2]: "GICS Sector Name",
-                source_columns[3]: "GICS Industry Group Name",
+            }
+        )
+        normalized = renamed[["Ticker", "Long Name"]].copy()
+        normalized["Ticker"] = normalized["Ticker"].map(self._extract_ticker)
+        duplicate_tickers = (
+            normalized["Ticker"].dropna().astype(str).value_counts().loc[lambda values: values > 1]
+        )
+        if not duplicate_tickers.empty:
+            raise ValueError(
+                "BQL sheet 'Name' contains duplicated tickers: "
+                f"{duplicate_tickers.index.tolist()}"
+            )
+
+        return normalized
+
+    def _read_classification_sheet(self, filepath: str) -> pd.DataFrame:
+        raw = pd.read_excel(filepath, sheet_name=_CLASSIFICATION_SHEET, header=0)
+        raw = raw.rename(columns=lambda value: str(value).strip())
+        raw = raw.iloc[1:].reset_index(drop=True)
+        raw = raw.dropna(axis=1, how="all").dropna(axis=0, how="all")
+
+        if raw.empty:
+            raise ValueError("BQL sheet 'Classification' is empty.")
+        if raw.shape[1] < 3:
+            raise ValueError(
+                "BQL sheet 'Classification' must contain Bloomberg code, sector, "
+                "and industry columns."
+            )
+
+        source_columns = list(raw.columns[:3])
+        renamed = raw.rename(
+            columns={
+                source_columns[0]: "Ticker",
+                source_columns[1]: "GICS Sector Name",
+                source_columns[2]: "GICS Industry Group Name",
             }
         )
         normalized = renamed[
             [
                 "Ticker",
-                "Long Name",
                 "GICS Sector Name",
                 "GICS Industry Group Name",
             ]
@@ -145,7 +195,7 @@ class BqlFileReader(BaseFileReader):
         )
         if not duplicate_tickers.empty:
             raise ValueError(
-                "BQL sheet 'Characteristics' contains duplicated tickers: "
+                "BQL sheet 'Classification' contains duplicated tickers: "
                 f"{duplicate_tickers.index.tolist()}"
             )
 

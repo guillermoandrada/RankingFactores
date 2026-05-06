@@ -40,7 +40,7 @@ async def create_period(
     ),
     index_code: str | None = Query(
         default=None,
-        description="Manual index code. Required for BQL uploads.",
+        description="Optional manual index code override.",
     ),
 ):
     """
@@ -67,12 +67,6 @@ async def create_period(
             status_code=400,
             detail="period is required when reader='reuters_metrics'.",
         )
-    if reader == "bql" and not (index_code or "").strip():
-        raise HTTPException(
-            status_code=400,
-            detail="index_code is required when reader='bql'.",
-        )
-
     try:
         contents = await file.read()
         return get_period_service().create_period_from_file(

@@ -16,25 +16,41 @@ from modules.models import ImportResult
 
 
 def _build_bql_excel_bytes() -> bytes:
-    characteristics = pd.DataFrame(
+    names = pd.DataFrame(
         {
             "Bloomberg Code": ["AAA US Equity", "BBB US Equity"],
             "Name": ["AAA Corp", "BBB Corp"],
-            "Sector": ["Tech", "Industrials"],
-            "Industry": ["Software", "Machinery"],
         }
     )
-    characteristics = pd.concat(
+    names = pd.concat(
         [
             pd.DataFrame(
                 {
                     "Bloomberg Code": ["FORMULA"],
                     "Name": ["=NAME_FORMULA"],
+                }
+            ),
+            names,
+        ],
+        ignore_index=True,
+    )
+    classification = pd.DataFrame(
+        {
+            "Bloomberg Code": ["AAA US Equity", "BBB US Equity"],
+            "Sector": ["Tech", "Industrials"],
+            "Industry": ["Software", "Machinery"],
+        }
+    )
+    classification = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "Bloomberg Code": ["FORMULA"],
                     "Sector": ["=SECTOR_FORMULA"],
                     "Industry": ["=INDUSTRY_FORMULA"],
                 }
             ),
-            characteristics,
+            classification,
         ],
         ignore_index=True,
     )
@@ -92,11 +108,17 @@ def _build_bql_excel_bytes() -> bytes:
         ],
         ignore_index=True,
     )
-    config = pd.DataFrame([["As Of Date", pd.Timestamp("2024-03-31")]])
+    config = pd.DataFrame(
+        [
+            ["As Of Date", pd.Timestamp("2024-03-31")],
+            ["Universe", "BQL_INDEX"],
+        ]
+    )
 
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        characteristics.to_excel(writer, sheet_name="Characteristics", index=False)
+        names.to_excel(writer, sheet_name="Name", index=False)
+        classification.to_excel(writer, sheet_name="Classification", index=False)
         current.to_excel(writer, sheet_name="Current", index=False)
         past.to_excel(writer, sheet_name="Past", index=False)
         estimated.to_excel(writer, sheet_name="Estimated", index=False)
@@ -142,9 +164,10 @@ def test_bql_reader_merges_three_sheets_and_extracts_period(tmp_path) -> None:
     assert result["Past Factor"].tolist() == [10.0, 20.0]
     assert result["Estimated Factor"].tolist() == [100.0, 200.0]
     assert reader.extract_period(str(file_path)) == "2024/03/31"
+    assert reader.extract_index_code(str(file_path)) == "BQL_INDEX"
 
 
-def test_bql_import_enriches_from_db_and_uses_manual_index_code(tmp_path) -> None:
+def test_bql_import_uses_config_index_code(tmp_path) -> None:
     db_path = tmp_path / "bql.db"
     db = FinancialDatabase(db_url=f"sqlite:///{db_path}")
     _seed_security_metadata(db, market_caps=[1_000.0, 2_000.0])
@@ -157,7 +180,6 @@ def test_bql_import_enriches_from_db_and_uses_manual_index_code(tmp_path) -> Non
         str(file_path),
         verbose=False,
         reader="bql",
-        index_code_override="BQL_INDEX",
     )
 
     assert result.period == "2024/03/31"
@@ -198,7 +220,6 @@ def test_bql_import_fails_when_market_cap_is_missing_for_ticker(tmp_path) -> Non
             str(file_path),
             verbose=False,
             reader="bql",
-            index_code_override="BQL_INDEX",
         )
 
 
@@ -216,11 +237,10 @@ def test_bql_import_fails_when_market_cap_metadata_is_missing(tmp_path) -> None:
             str(file_path),
             verbose=False,
             reader="bql",
-            index_code_override="BQL_INDEX",
         )
 
 
-def test_period_service_passes_bql_index_code() -> None:
+def test_period_service_lets_bql_reader_resolve_index_code() -> None:
     class FakeImporter:
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
@@ -243,34 +263,15 @@ def test_period_service_passes_bql_index_code() -> None:
         filename="bql.xlsx",
         if_period_exists="replace",
         reader="bql",
-        index_code="BQL_INDEX",
     )
 
     assert result["success"] is True
     assert importer.calls
     assert importer.calls[0]["reader"] == "bql"
-    assert importer.calls[0]["index_code_override"] == "BQL_INDEX"
+    assert importer.calls[0]["index_code_override"] is None
 
 
-def test_periods_endpoint_requires_index_code_for_bql() -> None:
-    client = TestClient(api_main.app)
-
-    response = client.post(
-        "/periods?reader=bql&if_period_exists=replace",
-        files={
-            "file": (
-                "bql.xlsx",
-                _build_bql_excel_bytes(),
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-        },
-    )
-
-    assert response.status_code == 400
-    assert "index_code is required" in response.json()["detail"]
-
-
-def test_periods_endpoint_bql_passes_index_code(monkeypatch) -> None:
+def test_periods_endpoint_bql_no_longer_requires_manual_index_code(monkeypatch) -> None:
     class FakeService:
         def create_period_from_file(
             self,
@@ -299,7 +300,7 @@ def test_periods_endpoint_bql_passes_index_code(monkeypatch) -> None:
     client = TestClient(api_main.app)
 
     response = client.post(
-        "/periods?reader=bql&index_code=BQL_INDEX&if_period_exists=append",
+        "/periods?reader=bql&if_period_exists=append",
         files={
             "file": (
                 "bql.xlsx",
@@ -313,4 +314,4 @@ def test_periods_endpoint_bql_passes_index_code(monkeypatch) -> None:
     payload = response.json()
     assert payload["reader"] == "bql"
     assert payload["if_period_exists"] == "append"
-    assert payload["index_code"] == "BQL_INDEX"
+    assert payload["index_code"] is None

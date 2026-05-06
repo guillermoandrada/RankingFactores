@@ -43,7 +43,6 @@ with tabs[0]:
     )
 
     target_period = None
-    target_index_code = None
     existing_periods_for_append: list[str] = []
     upload_behavior = "replace"
 
@@ -93,14 +92,9 @@ with tabs[0]:
             st.caption("This creates the period if it does not exist, or replaces it if it already exists.")
     elif reader == "bql":
         st.caption(
-            "BQL uploads use `Characteristics` for name/sector/industry, read factors from "
-            "`Current`, `Past`, and `Estimated`, infer the period from `Config!B1`, and "
-            "require an index code at upload time."
-        )
-        target_index_code = st.text_input(
-            "Index code",
-            key="period_bql_index_code",
-            help="Required for BQL uploads because the workbook does not encode the index.",
+            "BQL uploads use `Name` for security names, `Classification` for GICS data, "
+            "read factors from `Current`, `Past`, and `Estimated`, infer the period from "
+            "`Config!B1`, and infer the universe from `Config!B2`."
         )
     else:
         st.caption("Bloomberg uploads infer the period directly from the file.")
@@ -125,8 +119,6 @@ with tabs[0]:
             st.error("No existing periods are available for append.")
         elif reader == "reuters_metrics" and not str(target_period or "").strip():
             st.error("Enter or select a period for the Reuters upload.")
-        elif reader == "bql" and not str(target_index_code or "").strip():
-            st.error("Enter an index code for the BQL upload.")
         else:
             try:
                 content = file.read()
@@ -136,7 +128,6 @@ with tabs[0]:
                     if_period_exists=upload_behavior,
                     reader=reader,
                     period=target_period,
-                    index_code=target_index_code,
                 )
                 st.session_state["period_upload_success"] = (
                     f"Period '{result.get('period', '')}' uploaded successfully. "

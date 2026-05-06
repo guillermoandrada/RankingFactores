@@ -47,8 +47,6 @@ class PeriodService:
         normalized_index_code = (index_code or "").strip() or None
         if reader == "reuters_metrics" and not normalized_period:
             raise ValueError("period is required when reader='reuters_metrics'.")
-        if reader == "bql" and not normalized_index_code:
-            raise ValueError("index_code is required when reader='bql'.")
 
         tmp_suffix = Path(filename).suffix or ".xlsx"
         with tempfile.NamedTemporaryFile(delete=False, suffix=tmp_suffix) as tmp:
