@@ -105,21 +105,24 @@ class DataImporter:
             row = metadata_by_ticker.get(ticker, {})
             if (
                 row_values is None
-                or not str(row_values.get("Long Name") or "").strip()
-                or not str(row_values.get("GICS Sector Name") or "").strip()
-                or not str(row_values.get("GICS Industry Group Name") or "").strip()
-                or row.get("market_cap_usd") is None
-                or pd.isna(row.get("market_cap_usd"))
+                or not self._has_non_empty_value(row_values.get("Long Name"))
+                or not self._has_non_empty_value(row_values.get("GICS Sector Name"))
+                or not self._has_non_empty_value(row_values.get("GICS Industry Group Name"))
             ):
                 missing_metadata.append(ticker)
 
         if missing_metadata:
             raise ValueError(
-                "BQL upload requires Characteristics metadata and existing market cap for "
+                "BQL upload requires Name and Classification metadata for "
                 f"every ticker. Incomplete metadata for: {sorted(missing_metadata)}"
             )
 
         return enriched
+
+    def _has_non_empty_value(self, value: object) -> bool:
+        if value is None or pd.isna(value):
+            return False
+        return bool(str(value).strip())
 
     def _validate_columns(self, df: pd.DataFrame) -> None:
         if "Ticker" not in df.columns:
@@ -140,7 +143,7 @@ def main() -> None:
 
     try:
         importer.import_file(filepath)
-    except Exception as e:
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as e:
         print("\n--- ERROR ---")
         print(e)
         print("-------------")

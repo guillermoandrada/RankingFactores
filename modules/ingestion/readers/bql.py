@@ -12,6 +12,10 @@ _DATA_SHEETS = ("Current", "Past", "Estimated")
 _NAME_SHEET = "Name"
 _CLASSIFICATION_SHEET = "Classification"
 _CONFIG_SHEET = "Config"
+_BLOOMBERG_CODE_ALIASES = ("Bloomberg Code", "Bloomberg code", "Ticker", "Identifier")
+_NAME_ALIASES = ("Security Name", "Name", "Long Name")
+_SECTOR_ALIASES = ("GICS Sector Name", "Sector")
+_INDUSTRY_ALIASES = ("GICS Industry Group Name", "Industry")
 
 
 class BqlFileReader(BaseFileReader):
@@ -135,19 +139,14 @@ class BqlFileReader(BaseFileReader):
 
         if raw.empty:
             raise ValueError("BQL sheet 'Name' is empty.")
-        if raw.shape[1] < 2:
-            raise ValueError(
-                "BQL sheet 'Name' must contain Bloomberg code and security name columns."
-            )
-
-        source_columns = list(raw.columns[:2])
-        renamed = raw.rename(
+        ticker_column = self._resolve_column(raw.columns, _BLOOMBERG_CODE_ALIASES, default_index=0)
+        name_column = self._resolve_column(raw.columns, _NAME_ALIASES, default_index=1)
+        normalized = raw.rename(
             columns={
-                source_columns[0]: "Ticker",
-                source_columns[1]: "Long Name",
+                ticker_column: "Ticker",
+                name_column: "Long Name",
             }
-        )
-        normalized = renamed[["Ticker", "Long Name"]].copy()
+        )[["Ticker", "Long Name"]].copy()
         normalized["Ticker"] = normalized["Ticker"].map(self._extract_ticker)
         duplicate_tickers = (
             normalized["Ticker"].dropna().astype(str).value_counts().loc[lambda values: values > 1]
@@ -168,21 +167,16 @@ class BqlFileReader(BaseFileReader):
 
         if raw.empty:
             raise ValueError("BQL sheet 'Classification' is empty.")
-        if raw.shape[1] < 3:
-            raise ValueError(
-                "BQL sheet 'Classification' must contain Bloomberg code, sector, "
-                "and industry columns."
-            )
-
-        source_columns = list(raw.columns[:3])
-        renamed = raw.rename(
+        ticker_column = self._resolve_column(raw.columns, _BLOOMBERG_CODE_ALIASES, default_index=0)
+        sector_column = self._resolve_column(raw.columns, _SECTOR_ALIASES, default_index=1)
+        industry_column = self._resolve_column(raw.columns, _INDUSTRY_ALIASES, default_index=2)
+        normalized = raw.rename(
             columns={
-                source_columns[0]: "Ticker",
-                source_columns[1]: "GICS Sector Name",
-                source_columns[2]: "GICS Industry Group Name",
+                ticker_column: "Ticker",
+                sector_column: "GICS Sector Name",
+                industry_column: "GICS Industry Group Name",
             }
-        )
-        normalized = renamed[
+        )[
             [
                 "Ticker",
                 "GICS Sector Name",
@@ -206,3 +200,25 @@ class BqlFileReader(BaseFileReader):
         if not raw:
             return None
         return raw.split()[0].strip() or None
+
+    def _resolve_column(
+        self,
+        columns: pd.Index,
+        aliases: tuple[str, ...],
+        *,
+        default_index: int,
+    ) -> str:
+        normalized_columns = {str(column).strip().lower(): str(column).strip() for column in columns}
+        for alias in aliases:
+            match = normalized_columns.get(alias.strip().lower())
+            if match:
+                return match
+
+        available_columns = [str(column).strip() for column in columns if str(column).strip()]
+        if default_index < len(available_columns):
+            return available_columns[default_index]
+
+        raise ValueError(
+            f"Could not resolve a required BQL column from aliases {list(aliases)}. "
+            f"Found columns: {available_columns}"
+        )

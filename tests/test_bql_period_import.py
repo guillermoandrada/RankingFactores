@@ -19,7 +19,7 @@ def _build_bql_excel_bytes() -> bytes:
     names = pd.DataFrame(
         {
             "Bloomberg Code": ["AAA US Equity", "BBB US Equity"],
-            "Name": ["AAA Corp", "BBB Corp"],
+            "Security Name": ["AAA Corp", "BBB Corp"],
         }
     )
     names = pd.concat(
@@ -27,7 +27,7 @@ def _build_bql_excel_bytes() -> bytes:
             pd.DataFrame(
                 {
                     "Bloomberg Code": ["FORMULA"],
-                    "Name": ["=NAME_FORMULA"],
+                    "Security Name": ["=NAME_FORMULA"],
                 }
             ),
             names,
@@ -215,15 +215,15 @@ def test_bql_import_fails_when_market_cap_is_missing_for_ticker(tmp_path) -> Non
     file_path.write_bytes(_build_bql_excel_bytes())
 
     importer = DataImporter(database=db)
-    with pytest.raises(ValueError, match="Incomplete metadata"):
-        importer.import_file(
-            str(file_path),
-            verbose=False,
-            reader="bql",
-        )
+    result = importer.import_file(
+        str(file_path),
+        verbose=False,
+        reader="bql",
+    )
+    assert result.index_code == "BQL_INDEX"
 
 
-def test_bql_import_fails_when_market_cap_metadata_is_missing(tmp_path) -> None:
+def test_bql_import_allows_missing_market_cap_metadata(tmp_path) -> None:
     db_path = tmp_path / "bql_missing_market_cap.db"
     db = FinancialDatabase(db_url=f"sqlite:///{db_path}")
     _seed_security_metadata(db, market_caps=[1_000.0, None])
@@ -232,9 +232,42 @@ def test_bql_import_fails_when_market_cap_metadata_is_missing(tmp_path) -> None:
     file_path.write_bytes(_build_bql_excel_bytes())
 
     importer = DataImporter(database=db)
-    with pytest.raises(ValueError, match="Incomplete metadata"):
+    result = importer.import_file(
+        str(file_path),
+        verbose=False,
+        reader="bql",
+    )
+    assert result.index_code == "BQL_INDEX"
+
+
+def test_bql_import_fails_when_name_sheet_metadata_is_missing(tmp_path) -> None:
+    db_path = tmp_path / "bql_missing_name.db"
+    db = FinancialDatabase(db_url=f"sqlite:///{db_path}")
+    _seed_security_metadata(db, market_caps=[1_000.0, 2_000.0])
+
+    file_bytes = _build_bql_excel_bytes()
+    workbook = pd.ExcelFile(BytesIO(file_bytes))
+    names = pd.read_excel(workbook, sheet_name="Name")
+    names.iloc[1, 1] = None
+    classification = pd.read_excel(workbook, sheet_name="Classification")
+    current = pd.read_excel(workbook, sheet_name="Current")
+    past = pd.read_excel(workbook, sheet_name="Past")
+    estimated = pd.read_excel(workbook, sheet_name="Estimated")
+    config = pd.read_excel(workbook, sheet_name="Config", header=None)
+
+    broken_file = tmp_path / "bql_missing_name.xlsx"
+    with pd.ExcelWriter(broken_file, engine="openpyxl") as writer:
+        names.to_excel(writer, sheet_name="Name", index=False)
+        classification.to_excel(writer, sheet_name="Classification", index=False)
+        current.to_excel(writer, sheet_name="Current", index=False)
+        past.to_excel(writer, sheet_name="Past", index=False)
+        estimated.to_excel(writer, sheet_name="Estimated", index=False)
+        config.to_excel(writer, sheet_name="Config", index=False, header=False)
+
+    importer = DataImporter(database=db)
+    with pytest.raises(ValueError, match="Name and Classification metadata"):
         importer.import_file(
-            str(file_path),
+            str(broken_file),
             verbose=False,
             reader="bql",
         )
