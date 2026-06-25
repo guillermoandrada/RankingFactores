@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from io import BytesIO
 
@@ -7,10 +7,10 @@ from fastapi.testclient import TestClient
 
 import api.main as api_main
 import api.routers.periods as periods_router
-from modules.db.repository import FinancialDatabase
+from modules.infrastructure.db.repository import FinancialDatabase
 from api.services.period_service import PeriodService
-from modules.ingestion.readers.reuters_metrics import ReutersMetricsFileReader
-from modules.models import ImportResult
+from modules.infrastructure.ingestion.readers.reuters_metrics import ReutersMetricsFileReader
+from modules.domain.models import ImportResult
 
 
 def _build_reuters_excel_bytes() -> bytes:

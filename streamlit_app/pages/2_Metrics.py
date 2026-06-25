@@ -1,13 +1,12 @@
-"""Metrics - Create, Get & Edit, Delete user-made (derived) metrics."""
+﻿"""Metrics - Create, Get & Edit, Delete user-made (derived) metrics."""
 
 from __future__ import annotations
 
 import streamlit as st
 
-from streamlit_app.api_client import ApiError
+from streamlit_app.client.api_client import ApiError
 from streamlit_app.ui import (
     get_api_client,
-    inject_custom_css,
     render_page_header,
     render_section,
     render_sidebar_api_test,
@@ -380,8 +379,6 @@ def _render_edit_metric_tab(client):
                 st.error(str(exc))
 
 
-st.set_page_config(page_title="Metrics", layout="wide")
-inject_custom_css()
 render_page_header("Metrics", "Manage user-made derived metrics. Base metrics are only loaded when building formulas.")
 
 client = get_api_client("metrics")

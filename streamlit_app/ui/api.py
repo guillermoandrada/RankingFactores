@@ -1,10 +1,10 @@
-"""Shared API client factory for Streamlit pages."""
+﻿"""Shared API client factory for Streamlit pages."""
 
 from __future__ import annotations
 
 import streamlit as st
 
-from streamlit_app.api_client import ApiError, RankingApiClient
+from streamlit_app.client.api_client import ApiError, RankingApiClient
 
 
 def get_api_client(key_prefix: str) -> RankingApiClient:

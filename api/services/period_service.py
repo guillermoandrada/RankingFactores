@@ -1,4 +1,4 @@
-"""Period service: create, update, delete period orchestration."""
+﻿"""Period service: create, update, delete period orchestration."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from modules.models import ImportResult
+from modules.domain.models import ImportResult
 
 
 class PeriodService:

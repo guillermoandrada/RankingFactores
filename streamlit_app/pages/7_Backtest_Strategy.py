@@ -1,4 +1,4 @@
-"""Strategy Backtest - historical simulation across manual period windows."""
+﻿"""Strategy Backtest - historical simulation across manual period windows."""
 
 from __future__ import annotations
 
@@ -10,16 +10,15 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from modules.portfolio import parse_ethical_filter_excel
-from streamlit_app.api_client import ApiError
-from streamlit_app.constraint_targets import (
+from modules.domain.portfolio import parse_ethical_filter_excel
+from streamlit_app.client.api_client import ApiError
+from streamlit_app.ui.constraints import (
     render_constraint_target_fields,
     set_all_targets_enabled,
     targets_from_dataframe,
 )
 from streamlit_app.ui import (
     get_api_client,
-    inject_custom_css,
     render_page_header,
     render_sidebar_api_test,
 )
@@ -340,8 +339,6 @@ def _render_strategy_schedule_windows(available_periods: list[str]) -> None:
         st.rerun()
 
 
-st.set_page_config(page_title="Strategy Backtest", layout="wide")
-inject_custom_css()
 render_page_header(
     "Strategy Backtest",
     "Run a historical simulation by rebuilding the portfolio across manual period windows.",

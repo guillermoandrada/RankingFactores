@@ -1,16 +1,14 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 
 import streamlit as st
 
-from streamlit_app.api_client import ApiError
-from streamlit_app.ui import get_api_client, inject_custom_css, render_page_header, render_sidebar_api_test
-from streamlit_app.wizard_components import convert_wizard_to_profile, render_transforms, validate_profile_payload
-from streamlit_app.wizard_tree_editor import render_step2_base_structure
+from streamlit_app.client.api_client import ApiError
+from streamlit_app.ui import get_api_client, render_page_header, render_sidebar_api_test
+from streamlit_app.components.wizard.steps import convert_wizard_to_profile, render_transforms, validate_profile_payload
+from streamlit_app.components.wizard.tree_editor import render_step2_base_structure
 
-st.set_page_config(page_title="Scoring Profile Wizard", layout="wide")
-inject_custom_css()
 render_page_header("Scoring Profile Wizard", "Step-by-step builder for scoring methodologies with nested composition boxes.")
 
 client = get_api_client("wizard")

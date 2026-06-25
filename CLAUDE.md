@@ -1,101 +1,198 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Project coding principles
 
-## Commands
+This project must follow these principles in every task unless explicitly told otherwise:
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+- Preferred language: Python.
+- Follow PEP 8 for naming, formatting, readability, and consistency.
+- Apply SOLID principles.
+- Follow Clean Code principles.
+- Prioritize simplicity and avoid unnecessary complexity.
+- Use DRY patterns and avoid duplicated logic.
+- Prefer clear, explicit names over clever or abbreviated ones.
+- Keep functions and methods small and focused on one responsibility.
+- Prefer self-explanatory code over excessive comments.
+- Control complexity by splitting logic into modules and layers.
 
-# Run FastAPI backend
-uvicorn api.main:app --reload
+## Symmetry rule
 
-# Run Streamlit frontend (requires backend running separately)
-streamlit run streamlit_app/Home.py
+Symmetry is a first-class design constraint in this repository.
 
-# Import data from Excel/CSV
-python run_import.py
-python run_import.py "path/to/file.xlsx"
+When implementing or changing something, always check whether there is an analogous module, class, method, schema, endpoint, config, test, or UI component that should follow the same pattern.
 
-# Run tests
-pytest
+Prefer symmetrical design whenever reasonable:
 
-# Run a single test file
-pytest tests/test_portfolio.py
-```
+- symmetrical folder structure
+- symmetrical naming
+- symmetrical method signatures
+- symmetrical validation logic
+- symmetrical error handling
+- symmetrical return shapes
+- symmetrical test structure
+- symmetrical documentation
+- symmetrical UI patterns
+- symmetrical architecture across equivalent modules
 
-## Architecture
+If one module has a pattern that should logically exist in sibling modules, implement the corresponding pattern there too unless there is a strong reason not to.
 
-**RankingFactores** is a financial security ranking and portfolio construction platform. It ingests fundamental financial metrics (from Bloomberg/Reuters Excel exports), computes factor-based security rankings, analyzes factor predictiveness (Information Coefficient), constructs portfolios, and backtests strategies.
+Do not introduce one-off structures, one-off names, or one-off APIs without necessity.
 
-### Three-tier structure
+If asymmetry is required, keep it minimal and explicitly explain why in the final summary.
 
-1. **FastAPI backend** (`api/`) — REST API with a service layer; Streamlit calls this at runtime.
-2. **Streamlit frontend** (`streamlit_app/`) — Multi-page UI; pages map to the workflow: Periods → Metrics → IC Analysis → Scoring Profiles → Ranking → Portfolio → Backtest.
-3. **Core modules** (`modules/`) — All business logic; consumed by the API services.
+## Architecture expectations
 
-### Data flow
+Before coding, identify the existing local pattern and extend it rather than inventing a new one.
 
-```
-Excel/CSV → FileReader (Bloomberg/Reuters) → DataImporter (validate, normalize)
-  → FinancialDatabase (SQLite via SQLAlchemy)
-  → ZScoreCalculator → RankingEngine (weighted scores)
-  → PortfolioService (smart-beta or long/short)
-  → BacktestService (rolling performance)
-```
+Prefer:
+- extension over ad hoc redesign
+- abstraction over tight coupling
+- composable helpers over repeated inline logic
+- consistent interfaces over special cases
+- layered organization over mixed concerns
 
-### Key modules
+Each class should have a single responsibility.
+Depend on abstractions where possible, not concrete implementations.
+Interfaces should be specific and focused.
+New behavior should preferably be added by extension, not by destabilizing existing code.
 
-| Module | Responsibility |
-|---|---|
-| `modules/db/` | SQLite repository — securities, metrics, fundamentals, period-scoped classifications |
-| `modules/ingestion/` | File readers (Bloomberg, Reuters) + DataImporter orchestrator |
-| `modules/analytics/zscore.py` | Winsorized z-score normalization, filterable by index/industry |
-| `modules/analytics/ranking.py` | Combines z-scores via linear or softplus into a final score |
-| `modules/analytics/ic_analyzer.py` | Spearman rank correlation of factors vs forward returns |
-| `modules/config/ranking_profiles.py` | JSON-persisted scoring profiles (weights, metrics, method) |
-| `modules/config/derived_metrics.py` | Computed metrics defined as formulas (e.g. Debt/Assets) |
-| `modules/portfolio/` | Smart-beta and long/short portfolio builders + rebalancing |
-| `modules/backtesting/` | Time-series backtesting across rolling periods |
-| `api/dependencies.py` | Singleton factory — all services and repositories are injected here |
-| `api/routers/` | Thin HTTP routers (periods, metrics, scorings, scoring-profiles, portfolios, backtests, reference, db_metrics) |
-| `api/services/` | Business logic layer called by routers |
-| `streamlit_app/api_client.py` | HTTP client wrapping every FastAPI endpoint for the UI |
+## API design best practices
 
-### Configuration
+When working on APIs, prefer simple, resource-oriented designs with predictable behavior.
 
-`config.json` at the project root controls the SQLite database URL (`financial_data.db`), fixed required columns, and the default input file. The committed `financial_data.db` contains default data and is intentionally tracked in git.
+### General rules
 
-### Market data
+- Keep routers thin.
+- Keep business logic out of routers/controllers and place it in services/managers.
+- Prefer a small set of clear endpoints per resource.
+- As a default, aim for 4 or 5 endpoints per router, each aligned with a major CRUD action.
+- Avoid adding special-purpose endpoints unless they are clearly justified.
+- Use consistent request and response schemas across equivalent resources.
+- Keep naming symmetrical across routers, DTOs, services, and tests.
+- Prefer nouns for routes, not verbs.
 
-`modules/analytics/base_price_provider.py` defines the pluggable `BasePriceProvider` interface. The only concrete implementation is `YFinanceService` (wrapping `yfinance`), used for ticker validation and historical return retrieval.
+### Default CRUD shape
 
----
+Use this as the default pattern unless there is a strong reason not to:
 
-## Coding principles (from AGENTS.md)
+- `GET /resources` → list resources
+- `GET /resources/{id}` → retrieve one resource
+- `POST /resources` → create
+- `PUT /resources/{id}` or `PATCH /resources/{id}` → update
+- `DELETE /resources/{id}` → delete
 
-**Symmetry is a first-class constraint.** Before implementing anything, check whether analogous modules (sibling routers, schemas, services, tests, UI pages) should follow the same pattern. Introduce asymmetry only when necessary, and explain it in the final summary.
+If both `PUT` and `PATCH` exist, their semantics must be clear and consistent.
+Do not create multiple overlapping update endpoints without necessity.
 
-**Architecture expectations:**
-- Identify and extend the existing local pattern rather than inventing a new one.
-- Keep routers thin: parse input → delegate to service → translate errors to HTTP responses.
-- Business logic lives in services, not routers. Persistence lives in the repository, not in services.
-- Depend on abstractions (e.g. `BasePriceProvider`) over concrete implementations.
+### HTTP status code rules
 
-**API defaults** (4–5 endpoints per router, CRUD-aligned):
-- `GET /resources` → list
-- `GET /resources/{id}` → retrieve one
-- `POST /resources` → create (returns `201`)
-- `PUT /resources/{id}` → update (returns `200` or `204`)
-- `DELETE /resources/{id}` → delete (returns `204`)
+Return proper HTTP status codes consistently.
 
-**Implementation steps for every non-trivial task:**
+Prefer:
+
+- `200 OK` for successful reads and updates that return content
+- `201 Created` for successful creations
+- `204 No Content` for successful deletions or updates with no response body
+- `400 Bad Request` for malformed requests
+- `401 Unauthorized` for missing or invalid authentication
+- `403 Forbidden` for authenticated users lacking permission
+- `404 Not Found` when the resource does not exist
+- `409 Conflict` for state conflicts, duplicates, or versioning conflicts
+- `422 Unprocessable Entity` for validation failures when the payload is well-formed but invalid
+- `500 Internal Server Error` only for unexpected server-side failures
+
+Do not return `200` for everything.
+Do not hide errors behind success responses.
+Do not leak internal implementation details in error messages.
+
+### Router/controller rules
+
+Routers/controllers should:
+
+- parse input
+- validate basic request shape
+- delegate work to a service/use-case layer
+- translate domain/application errors into HTTP responses
+- remain short and easy to scan
+
+Routers/controllers should not:
+
+- contain heavy business logic
+- perform complex orchestration inline
+- access persistence directly if a service/manager layer exists
+- duplicate validation already handled elsewhere unless required by framework boundaries
+
+### Request/response design
+
+- Use stable, predictable response shapes.
+- Keep response models consistent across similar endpoints.
+- Return explicit error payloads with clear messages.
+- Prefer pagination, filtering, and sorting conventions that are reusable across endpoints.
+- Avoid mixing unrelated data into a single endpoint response unless there is a clear performance or UX reason.
+- Prefer explicit fields over ambiguous nested structures.
+
+### API symmetry rules
+
+Equivalent resources should expose equivalent API patterns whenever reasonable.
+
+Keep symmetrical:
+
+- route naming
+- CRUD coverage
+- query parameter naming
+- response envelopes
+- validation behavior
+- error response structure
+- pagination format
+- authentication and authorization patterns
+- test coverage style
+- documentation structure
+
+If one resource has list/get/create/update/delete behavior, sibling resources should follow the same pattern unless there is a justified domain reason not to.
+
+### API change discipline
+
+- Prefer backward-compatible changes.
+- Avoid breaking public contracts unless explicitly required.
+- When changing an API, update schemas, validation, docs, and tests together.
+- If an endpoint deviates from the repository default, explain why in the final summary.
+
+## Implementation behavior
+
+For every non-trivial task:
+
 1. Inspect nearby files and identify the dominant repository pattern.
-2. Reuse existing architecture and naming conventions.
+2. Reuse the existing architecture and naming conventions.
 3. Check sibling modules for symmetry opportunities.
 4. Implement the smallest clean solution that fits the architecture.
 5. Update or add tests in the same style as existing tests.
-6. Summarize what changed, which pattern was followed, which symmetric counterparts were checked, and any intentional asymmetry.
+6. Summarize what was changed and mention any intentional asymmetry.
 
-**Code style:** type hints where the codebase already uses them, explicit errors over silent fallbacks, no premature abstraction, no hidden side effects.
+## Code style defaults
+
+- Use type hints where the codebase already uses them or where they improve clarity.
+- Prefer explicit errors over silent fallbacks.
+- Avoid overly generic utility layers unless they clearly reduce duplication.
+- Avoid premature abstraction.
+- Keep public APIs stable unless the task explicitly requires change.
+- Avoid hidden side effects.
+- Keep data models, schemas, and transformations consistent across similar entities.
+
+## Repository conventions
+
+When relevant, align work with this structure:
+
+- `src/` for source code
+- `tests/` for tests
+- `docs/` for documentation
+
+Respect the repository branching and delivery conventions already in use.
+
+## Agent response expectations
+
+When finishing a task, provide:
+
+- what changed
+- what pattern was followed
+- what symmetric counterparts were checked
+- any intentional deviation from symmetry and why

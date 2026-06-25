@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from io import BytesIO
 
@@ -9,10 +9,10 @@ from fastapi.testclient import TestClient
 import api.main as api_main
 import api.routers.periods as periods_router
 from api.services.period_service import PeriodService
-from modules.db.repository import FinancialDatabase
-from modules.ingestion.importer import DataImporter
-from modules.ingestion.readers.bql import BqlFileReader
-from modules.models import ImportResult
+from modules.infrastructure.db.repository import FinancialDatabase
+from modules.infrastructure.ingestion.importer import DataImporter
+from modules.infrastructure.ingestion.readers.bql import BqlFileReader
+from modules.domain.models import ImportResult
 
 
 def _build_bql_excel_bytes() -> bytes:

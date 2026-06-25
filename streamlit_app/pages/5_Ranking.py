@@ -1,4 +1,4 @@
-"""Ranking - Execute ranking endpoint for a period and scoring profile."""
+﻿"""Ranking - Execute ranking endpoint for a period and scoring profile."""
 
 from __future__ import annotations
 
@@ -9,11 +9,9 @@ import streamlit as st
 
 from typing import Any
 
-from streamlit_app.api_client import ApiError
-from streamlit_app.ui import get_api_client, inject_custom_css, render_page_header, render_sidebar_api_test
+from streamlit_app.client.api_client import ApiError
+from streamlit_app.ui import get_api_client, render_page_header, render_sidebar_api_test
 
-st.set_page_config(page_title="Ranking", layout="wide")
-inject_custom_css()
 render_page_header("Ranking", "Compute rankings for a period and scoring profile. Choose sector or industry to see rankings in collapsible sections.")
 
 client = get_api_client("ranking")

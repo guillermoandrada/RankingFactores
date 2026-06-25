@@ -1,20 +1,18 @@
-"""Scoring Profiles - Tree Navigator (left) + Node Editor (right)."""
+﻿"""Scoring Profiles - Tree Navigator (left) + Node Editor (right)."""
 
 from __future__ import annotations
 
 import streamlit as st
 
-from streamlit_app.api_client import ApiError
-from streamlit_app.profile_editor.profile_store import ProfileStore, flat_to_export_payload
-from streamlit_app.profile_editor.tree_nav import render_tree_nav
-from streamlit_app.profile_editor.node_editor import render_node_editor
-from streamlit_app.profile_editor.previews import render_previews
-from streamlit_app.profile_editor.validators import validate_nodes
-from streamlit_app.ui import get_api_client, inject_custom_css, render_page_header, render_sidebar_api_test
-from streamlit_app.wizard_tree_editor import _make_add_metric_dialog, _make_add_subfactor_dialog
+from streamlit_app.client.api_client import ApiError
+from streamlit_app.components.profile_editor.profile_store import ProfileStore, flat_to_export_payload
+from streamlit_app.components.profile_editor.tree_nav import render_tree_nav
+from streamlit_app.components.profile_editor.node_editor import render_node_editor
+from streamlit_app.components.profile_editor.previews import render_previews
+from streamlit_app.components.profile_editor.validators import validate_nodes
+from streamlit_app.ui import get_api_client, render_page_header, render_sidebar_api_test
+from streamlit_app.components.wizard.tree_editor import _make_add_metric_dialog, _make_add_subfactor_dialog
 
-st.set_page_config(page_title="Scoring Profiles", layout="wide")
-inject_custom_css()
 render_page_header("Scoring Profiles", "Tree navigator + node editor. Select a node to edit.")
 
 client = get_api_client("scoring_profiles")

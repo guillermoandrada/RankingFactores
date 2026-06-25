@@ -13,6 +13,7 @@ from api.routers.periods import router as periods_router
 from api.routers.scorings import router as scorings_router
 from api.routers.reference import router as reference_router
 from api.routers.scoring_profiles import router as scoring_profiles_router
+from api.routers.prices import router as prices_router
 
 app = FastAPI(
     title="RankingFactores API",
@@ -29,3 +30,4 @@ app.include_router(backtests_router)
 app.include_router(scorings_router)
 app.include_router(reference_router)
 app.include_router(scoring_profiles_router)
+app.include_router(prices_router)

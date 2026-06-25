@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 
@@ -7,7 +7,7 @@ import pandas as pd
 from api.schemas.backtests import PortfolioBacktestBody, StrategyBacktestBody
 from api.schemas.portfolios import PortfolioBuildBody
 from api.services.backtest_service import BacktestService
-from modules.market_data.providers.base import PriceMatrixResult
+from modules.infrastructure.market_data.providers.base import PriceMatrixResult
 
 
 class FakePriceProvider:

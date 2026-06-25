@@ -1,4 +1,4 @@
-"""Metric Selection — multivariate IC (predictive + inter-factor colinearity)."""
+﻿"""Metric Selection — multivariate IC (predictive + inter-factor colinearity)."""
 
 from __future__ import annotations
 
@@ -7,11 +7,9 @@ import pandas as pd
 import seaborn as sns
 import streamlit as st
 
-from streamlit_app.api_client import ApiError
-from streamlit_app.ui import get_api_client, inject_custom_css, render_page_header, render_sidebar_api_test
+from streamlit_app.client.api_client import ApiError
+from streamlit_app.ui import get_api_client, render_page_header, render_sidebar_api_test
 
-st.set_page_config(page_title="Metric Selection (IC)", layout="wide")
-inject_custom_css()
 render_page_header(
     "Metric Selection (IC)",
     "Multivariate factor analysis: Rank IC vs forward returns (predictive power) and "

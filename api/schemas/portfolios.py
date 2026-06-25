@@ -45,6 +45,7 @@ class PortfolioBuildBody(BaseModel):
     max_position: float = 0.05
     neutral_position: float = 0.03
     score_quantile_cutoff: float = 0.5
+    max_industry_difference: float = 0.003
     min_trade_weight: float = 0.0
 
     top_n: Optional[int] = None

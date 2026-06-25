@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from fastapi.testclient import TestClient
 import pandas as pd
@@ -10,12 +10,13 @@ import api.routers.portfolios as portfolios_router
 import api.services.portfolio_service as portfolio_service_module
 from api.schemas.portfolios import PortfolioBuildBody
 from api.services.portfolio_service import PortfolioService
-from modules.portfolio.long_short import build_long_short_portfolio
-from modules.portfolio.legacy_rebalance import (
+from modules.domain.portfolio.long_short import build_long_short_portfolio
+from modules.domain.portfolio.legacy_rebalance import (
     build_legacy_rebalance_target,
+    build_legacy_rebalance_with_industry_steps,
     legacy_rebalance_trade_reason,
 )
-from modules.portfolio.models import SecurityCandidate
+from modules.domain.portfolio.models import HoldingPosition, SecurityCandidate
 
 
 class FakeDB:
@@ -89,9 +90,14 @@ def test_portfolio_service_rebalance_generates_trades(monkeypatch) -> None:
 
     assert result["construction_mode"] == "rebalance_existing"
     assert result["trades"]
-    assert any(trade["ticker"] == "AAA" for trade in result["trades"])
-    bbb_trade = next(t for t in result["trades"] if t["ticker"] == "BBB")
-    assert bbb_trade["reason"] == "sell_score_below_5"
+    # AAA should be bought (new position needed to fill the underweight industry).
+    aaa_trade = next(t for t in result["trades"] if t["ticker"] == "AAA")
+    assert aaa_trade["action"] == "buy"
+    # BBB (score=4, below floor) is excluded by Steps 1-5 but Step 7 re-buys it as the only
+    # remaining candidate in the underweight industry — net weight delta is zero.
+    bbb_trade = next((t for t in result["trades"] if t["ticker"] == "BBB"), None)
+    if bbb_trade is not None:
+        assert abs(bbb_trade["weight_delta"]) < 1e-6
 
 
 def test_portfolio_service_legacy_fully_restricted_returns_cash(monkeypatch) -> None:
@@ -461,6 +467,89 @@ def test_portfolios_endpoint(monkeypatch) -> None:
     payload = response.json()
     assert payload["strategy"] == "smart_beta"
     assert "portfolio" in payload
+
+
+def test_industry_step6_sells_lowest_score_from_overweight_industry(monkeypatch) -> None:
+    # Industry "Software" is overweight (8%) vs target (5%). Two positions: HIGH (score 9)
+    # and LOW (score 6). Step 6 should sell LOW first to correct the overweight.
+    candidates = [
+        SecurityCandidate(ticker="HIGH", score=9.0, name="High", sector="Tech", industry="Software"),
+        SecurityCandidate(ticker="LOW", score=6.0, name="Low", sector="Tech", industry="Software"),
+    ]
+    # total_capital = 1000; HIGH = 500 (50%), LOW = 300 (30%) → Software = 80%
+    current_positions = [
+        HoldingPosition(ticker="HIGH", quantity=5, price=100.0),
+        HoldingPosition(ticker="LOW", quantity=3, price=100.0),
+    ]
+    # Target: Software = 5%, so this is massively overweight.
+    # Step 6 sells LOW (worst score) first. LOW weight = 0.30 < remaining_overweight (0.75),
+    # so full close. Then HIGH weight = 0.50 > remaining_overweight (0.45), partial sell.
+    positions, _ = build_legacy_rebalance_with_industry_steps(
+        candidates,
+        current_positions,
+        total_capital=1000.0,
+        industry_targets={"Software": 0.05},
+        neutral_position=0.03,
+        max_position=0.60,  # high enough so capping does not trigger before Step 6
+        score_quantile_cutoff=-1.0,
+    )
+    target_by_ticker = {p.ticker: p.target_weight for p in positions}
+    # LOW should be fully closed (not in result)
+    assert "LOW" not in target_by_ticker
+    # HIGH should be partially sold; resulting industry weight ≤ 5% + MAX_INDUSTRY_DIFFERENCE
+    assert "HIGH" in target_by_ticker
+    software_weight = sum(w for t, w in target_by_ticker.items())
+    assert software_weight <= 0.05 + 0.003 + 1e-6
+
+
+def test_industry_step7_buys_highest_score_into_underweight_industry(monkeypatch) -> None:
+    # Industry "Software" is completely absent from the portfolio but has a 6% target.
+    # Step 7 should buy the highest-scoring eligible candidates up to neutral_position each.
+    candidates = [
+        SecurityCandidate(ticker="AAA", score=9.0, name="AAA", sector="Tech", industry="Software"),
+        SecurityCandidate(ticker="BBB", score=8.0, name="BBB", sector="Tech", industry="Software"),
+        SecurityCandidate(ticker="CCC", score=7.0, name="CCC", sector="Tech", industry="Software"),
+    ]
+    positions, _ = build_legacy_rebalance_with_industry_steps(
+        candidates,
+        current_positions=[],
+        total_capital=1000.0,
+        industry_targets={"Software": 0.06},
+        neutral_position=0.03,
+        max_position=0.05,
+        score_quantile_cutoff=-1.0,
+    )
+    target_by_ticker = {p.ticker: p.target_weight for p in positions}
+    # AAA and BBB should each be bought at neutral_position (0.03), filling the 6% target.
+    assert target_by_ticker.get("AAA") == pytest.approx(0.03, abs=1e-9)
+    assert target_by_ticker.get("BBB") == pytest.approx(0.03, abs=1e-9)
+    # CCC should not be bought since remaining_underweight < MAX_INDUSTRY_DIFFERENCE after two buys.
+    assert "CCC" not in target_by_ticker
+
+
+def test_industry_rebalance_skips_industry_within_max_industry_difference() -> None:
+    # Software is at 4.9% vs a 5% target — difference is 0.1% which is below
+    # MAX_INDUSTRY_DIFFERENCE (0.3%). Neither Step 6 nor Step 7 should fire.
+    candidates = [
+        SecurityCandidate(ticker="HOLD", score=9.0, name="Hold", sector="Tech", industry="Software"),
+    ]
+    current_positions = [
+        HoldingPosition(ticker="HOLD", quantity=49, price=1.0),
+    ]
+    # total_capital = 100; HOLD = 49 (49%). Software target = 50% → gap = 1% ≥ 0.3%, Step 7 fires.
+    # Let's set weight exactly within tolerance: capital=100, HOLD=49 → 49%, target=49.2% → gap=0.2%
+    positions, _ = build_legacy_rebalance_with_industry_steps(
+        candidates,
+        current_positions,
+        total_capital=100.0,
+        industry_targets={"Software": 0.492},
+        neutral_position=0.5,
+        max_position=0.5,
+        score_quantile_cutoff=-1.0,
+    )
+    target_by_ticker = {p.ticker: p.target_weight for p in positions}
+    # Weight should be unchanged (49%) since the gap is below MAX_INDUSTRY_DIFFERENCE.
+    assert target_by_ticker.get("HOLD") == pytest.approx(0.49, abs=1e-9)
 
 
 def test_portfolio_schema_rejects_mixed_constraint_types() -> None:

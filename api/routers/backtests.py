@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 
 import api.dependencies as dependencies
@@ -13,8 +15,12 @@ router = APIRouter(prefix="/backtests", tags=["backtests"])
 @router.post("/portfolio")
 async def run_portfolio_backtest(request: PortfolioBacktestBody):
     """Backtest an already-built portfolio over a date range."""
+    loop = asyncio.get_event_loop()
     try:
-        return dependencies.get_backtest_service().backtest_portfolio(request)
+        return await loop.run_in_executor(
+            None,
+            lambda: dependencies.get_backtest_service().backtest_portfolio(request),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -35,7 +41,11 @@ async def run_strategy_backtest(request: StrategyBacktestBody):
             status_code=404,
             detail=f"Periods not found: {', '.join(missing_periods)}",
         )
+    loop = asyncio.get_event_loop()
     try:
-        return dependencies.get_backtest_service().backtest_strategy(request)
+        return await loop.run_in_executor(
+            None,
+            lambda: dependencies.get_backtest_service().backtest_strategy(request),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -1,4 +1,4 @@
-"""Backtest orchestration service."""
+﻿"""Backtest orchestration service."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 
 from api.schemas.backtests import PortfolioBacktestBody, StrategyBacktestBody
-from modules.backtesting import (
+from modules.domain.backtesting import (
     BacktestInterval,
     build_portfolio_time_series,
     compute_summary_metrics,
@@ -15,7 +15,7 @@ from modules.backtesting import (
     join_benchmark_series,
     serialize_series,
 )
-from modules.market_data import BasePriceProvider
+from modules.infrastructure.market_data import BasePriceProvider
 from api.services.portfolio_service import PortfolioService
 
 

@@ -1,10 +1,10 @@
-"""Pure helpers for constraint target dataframes."""
+﻿"""Pure helpers for constraint target dataframes."""
 
 from __future__ import annotations
 
 import pandas as pd
 
-from streamlit_app.constraint_targets import targets_from_dataframe
+from streamlit_app.ui.constraints import targets_from_dataframe
 
 
 def test_targets_from_dataframe_enabled_only_and_fraction() -> None:

@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import pandas as pd
 
-from modules.db.repository import FinancialDatabase
+from modules.infrastructure.db.repository import FinancialDatabase
 
 
 def test_get_period_content_includes_period_scoped_name_sector_and_industry(tmp_path) -> None:

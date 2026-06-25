@@ -1,4 +1,4 @@
-"""Scorings router: compute period scoring."""
+﻿"""Scorings router: compute period scoring."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from api.dependencies import get_db
 from api.schemas.scorings import BatchScoringBody, ComputePeriodScoringBody, ScopeItem
 from api.services.ranking_service import compute_ranking, export_ranking_to_xlsx
-from modules.pandas_jsonable import dataframe_to_jsonable_records
+from modules.shared.dataframes import dataframe_to_jsonable_records
 
 router = APIRouter(prefix="/scorings", tags=["scorings"])
 

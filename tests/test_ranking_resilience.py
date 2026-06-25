@@ -1,9 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import pandas as pd
 
-from modules.analytics.zscore import ZScoreCalculator
-from modules.db.repository import FinancialDatabase
+from modules.domain.analytics.zscore import ZScoreCalculator
+from modules.infrastructure.db.repository import FinancialDatabase
 
 
 def test_zscore_calculator_warns_and_zeroes_completely_missing_metric(tmp_path) -> None:

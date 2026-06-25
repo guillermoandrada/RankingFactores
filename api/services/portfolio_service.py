@@ -1,4 +1,4 @@
-"""Portfolio construction service."""
+﻿"""Portfolio construction service."""
 
 from __future__ import annotations
 
@@ -8,20 +8,21 @@ import pandas as pd
 
 from api.schemas.portfolios import PortfolioBuildBody
 from api.services.ranking_service import compute_ranking
-from modules.db import FinancialDatabase
-from modules.portfolio import (
+from modules.infrastructure.db import FinancialDatabase
+from modules.domain.portfolio import (
     build_legacy_rebalance_target,
+    build_legacy_rebalance_with_industry_steps,
     build_long_short_portfolio,
     build_smart_beta_portfolio,
     parse_ethical_filter_rows,
     parse_holdings_rows,
 )
-from modules.portfolio.legacy_rebalance import (
+from modules.domain.portfolio.legacy_rebalance import (
     industry_quantile_cutoffs_for_allowed,
     legacy_rebalance_trade_reason,
 )
-from modules.portfolio.constraints import compute_group_weights
-from modules.portfolio.models import (
+from modules.domain.portfolio.constraints import compute_group_weights
+from modules.domain.portfolio.models import (
     HoldingPosition,
     PortfolioDiagnostics,
     PortfolioTrade,
@@ -60,12 +61,10 @@ class PortfolioService:
             scoring_profile=request.scoring_profile,
         )
         candidates = self._build_candidates(period, df_ranked, request)
-        target_positions, diagnostics = self._run_strategy(candidates, request)
 
         current_positions: list[HoldingPosition] = []
         cash = 0.0
         total_capital = float(request.capital_base)
-        legacy_trade_context: dict[str, Any] | None = None
         if request.construction_mode == "rebalance_existing":
             if not request.current_holdings:
                 raise ValueError(
@@ -79,6 +78,26 @@ class PortfolioService:
             if total_capital <= 0:
                 raise ValueError("Existing portfolio value must be positive.")
 
+        if (
+            request.strategy == "legacy_rebalance"
+            and request.construction_mode == "rebalance_existing"
+            and request.constraint_type == "industry"
+            and current_positions
+        ):
+            target_positions, diagnostics = build_legacy_rebalance_with_industry_steps(
+                candidates,
+                current_positions,
+                total_capital,
+                industry_targets=request.industry_targets,
+                max_position=float(request.max_position),
+                neutral_position=float(request.neutral_position),
+                score_quantile_cutoff=float(request.score_quantile_cutoff),
+                max_industry_difference=float(request.max_industry_difference),
+            )
+        else:
+            target_positions, diagnostics = self._run_strategy(candidates, request)
+
+        legacy_trade_context: dict[str, Any] | None = None
         if (
             request.strategy == "legacy_rebalance"
             and request.construction_mode == "rebalance_existing"

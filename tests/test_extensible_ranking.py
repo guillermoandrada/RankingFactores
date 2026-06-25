@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -12,8 +12,8 @@ import api.routers.metrics as metrics_router
 import api.routers.scoring_profiles as scoring_profiles_router
 import api.routers.scorings as scorings_router
 from api.services.ranking_service import _apply_display_labels
-from modules.analytics.ranking import RankingEngine
-from modules.analytics.transforms import build_default_transform_registry
+from modules.domain.analytics.ranking import RankingEngine
+from modules.domain.analytics.transforms import build_default_transform_registry
 from modules.config.ranking_profiles import RankingProfileResolver, RankingProfileStore
 
 

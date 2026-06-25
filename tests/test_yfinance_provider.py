@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import pandas as pd
 
-from modules.market_data.providers.yfinance_provider import YFinancePriceProvider
+from modules.infrastructure.market_data.providers.yfinance_provider import YFinancePriceProvider
 
 
 def test_yfinance_provider_bulk_fetch_with_single_ticker_fallback(monkeypatch) -> None:
@@ -38,11 +38,11 @@ def test_yfinance_provider_bulk_fetch_with_single_ticker_fallback(monkeypatch) -
             return pd.DataFrame()
 
     monkeypatch.setattr(
-        "modules.market_data.providers.yfinance_provider.yf.download",
+        "modules.infrastructure.market_data.providers.yfinance_provider.yf.download",
         _fake_download,
     )
     monkeypatch.setattr(
-        "modules.market_data.providers.yfinance_provider.yf.Ticker",
+        "modules.infrastructure.market_data.providers.yfinance_provider.yf.Ticker",
         _FakeTicker,
     )
 

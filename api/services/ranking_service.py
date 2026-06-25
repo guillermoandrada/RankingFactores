@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import io
 
 import pandas as pd
 
 from api.dependencies import get_db, get_profile_resolver, get_zscore_calculator
-from modules.analytics import FactorScoringService, RankingEngine
+from modules.domain.analytics import FactorScoringService, RankingEngine
 
 
 def get_metric_names_from_profile(profile: dict) -> list[str]:

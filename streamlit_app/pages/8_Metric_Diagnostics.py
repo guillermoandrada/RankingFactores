@@ -1,4 +1,4 @@
-"""Metric Diagnostics — distribution shape and outlier detection per period."""
+﻿"""Metric Diagnostics — distribution shape and outlier detection per period."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import and_, case, func, select
 
-from modules.db import FinancialDatabase
-from streamlit_app.ui.layout import inject_custom_css, render_page_header
+from modules.infrastructure.db import FinancialDatabase
+from streamlit_app.ui.layout import render_page_header
 
 
 # ---------- Data loading ----------
@@ -252,8 +252,6 @@ def _color_outliers(v): return _traffic(v, 5.0, 15.0)
 
 # ---------- Page ----------
 
-st.set_page_config(page_title="Metric Diagnostics", layout="wide")
-inject_custom_css()
 render_page_header(
     "Metric Diagnostics",
     "Distribution shape and outlier detection per period (no normality assumed).",

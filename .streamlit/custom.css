@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Mulish:wght@300;400;500;600;700&display=swap');
+
 /* Section spacing and polish for RankingFactores */
 .block-container {
     padding-top: 1.5rem;
@@ -9,7 +11,7 @@ div[data-testid="stVerticalBlock"] > div:has([data-testid="stExpander"]) {
 }
 
 .stExpander {
-    border: 1px solid #374151;
+    border: 1px solid #BFBFBF;
     border-radius: 6px;
 }
 
@@ -22,4 +24,55 @@ div[data-testid="stHorizontalBlock"] {
     min-width: 0 !important;
     width: 0 !important;
     overflow: hidden !important;
+}
+
+/* Title font: Cormorant Garamond */
+h1, h2, h3, h4,
+[data-testid="stHeadingWithActionElements"] h1,
+[data-testid="stHeadingWithActionElements"] h2,
+[data-testid="stHeadingWithActionElements"] h3 {
+    font-family: 'Cormorant Garamond', Georgia, serif !important;
+    color: #002060 !important;
+    letter-spacing: 0.01em;
+}
+
+/* Body font: Mulish (formerly Muli) */
+/* Note: `span` and `button` are excluded — spans inherit from parent divs, and
+   Streamlit icon buttons rely on Material Symbols ligature rendering which breaks
+   when a custom font-family is forced onto those elements via !important. */
+html, body, .stApp, p, div, label,
+.stMarkdown, [data-testid="stText"],
+[data-testid="stCaption"], input,
+select, textarea, .stDataFrame {
+    font-family: 'Mulish', 'Open Sans', sans-serif !important;
+}
+
+/* Apply Mulish to labelled button text */
+.stButton > button, .stFormSubmitButton > button, .stDownloadButton > button {
+    font-family: 'Mulish', 'Open Sans', sans-serif !important;
+}
+
+/* Restore Material Symbols font on icon spans so ligatures render correctly */
+.material-symbols-rounded,
+.material-symbols-outlined,
+.material-symbols-sharp {
+    font-family: 'Material Symbols Rounded', 'Material Symbols Outlined', 'Material Symbols Sharp' !important;
+}
+
+/* Sidebar: deep navy background with white text */
+[data-testid="stSidebar"] {
+    background-color: #002060 !important;
+}
+[data-testid="stSidebar"] * {
+    color: #FFFFFF !important;
+}
+[data-testid="stSidebar"] .stSelectbox label,
+[data-testid="stSidebar"] .stRadio label {
+    color: #BFBFBF !important;
+}
+
+/* Teal accent for success/positive states */
+[data-testid="stSuccess"],
+.stAlert[data-baseweb="notification"][kind="positive"] {
+    border-left: 4px solid #38CCA5 !important;
 }

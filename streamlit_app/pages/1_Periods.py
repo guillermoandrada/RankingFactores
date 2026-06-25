@@ -1,21 +1,18 @@
-"""Periods - Create (upload), View & Edit (editable table + remove security/metric), Delete."""
+﻿"""Periods - Create (upload), View & Edit (editable table + remove security/metric), Delete."""
 
 from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
 
-from streamlit_app.api_client import ApiError
+from streamlit_app.client.api_client import ApiError
 from streamlit_app.ui import (
     get_api_client,
-    inject_custom_css,
     render_page_header,
     render_section,
     render_sidebar_api_test,
 )
 
-st.set_page_config(page_title="Periods", layout="wide")
-inject_custom_css()
 render_page_header("Periods", "Create periods from Excel/CSV, view and edit content, remove securities/metrics, delete period.")
 
 client = get_api_client("periods")

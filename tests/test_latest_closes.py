@@ -1,11 +1,11 @@
-"""Tests for latest adjusted-close resolution."""
+﻿"""Tests for latest adjusted-close resolution."""
 
 from __future__ import annotations
 
 import pandas as pd
 
-from modules.market_data.latest_closes import fetch_latest_adjusted_closes
-from modules.market_data.providers.yfinance_provider import YFinancePriceProvider
+from modules.infrastructure.market_data.latest_closes import fetch_latest_adjusted_closes
+from modules.infrastructure.market_data.providers.yfinance_provider import YFinancePriceProvider
 
 
 def test_fetch_latest_adjusted_closes_uses_last_row(monkeypatch) -> None:
@@ -19,7 +19,7 @@ def test_fetch_latest_adjusted_closes_uses_last_row(monkeypatch) -> None:
         end_date: str,
         frequency: str = "daily",
     ):
-        from modules.market_data.providers.base import PriceMatrixResult
+        from modules.infrastructure.market_data.providers.base import PriceMatrixResult
 
         idx = pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"])
         prices = pd.DataFrame(
@@ -45,7 +45,7 @@ def test_fetch_latest_adjusted_closes_reports_empty_series(monkeypatch) -> None:
     provider = YFinancePriceProvider()
 
     def fake_fetch(self, identifiers, *, start_date, end_date, frequency="daily"):
-        from modules.market_data.providers.base import PriceMatrixResult
+        from modules.infrastructure.market_data.providers.base import PriceMatrixResult
 
         idx = pd.to_datetime(["2024-01-02"])
         prices = pd.DataFrame({"ZZZ": [float("nan")]}, index=idx)

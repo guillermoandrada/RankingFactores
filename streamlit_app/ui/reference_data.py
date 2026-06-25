@@ -1,4 +1,4 @@
-"""TTL-cached reference lists (periods, profiles, sectors, etc.) for heavy Streamlit pages."""
+﻿"""TTL-cached reference lists (periods, profiles, sectors, etc.) for heavy Streamlit pages."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 
 import streamlit as st
 
-from streamlit_app.api_client import RankingApiClient
+from streamlit_app.client.api_client import RankingApiClient
 
 REFERENCE_CACHE_TTL_SEC = 120.0
 

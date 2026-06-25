@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import pytest
 
-from streamlit_app.profile_editor.profile_store import migrate_legacy_to_flat
+from streamlit_app.components.profile_editor.profile_store import migrate_legacy_to_flat
 
 
 def test_migrate_legacy_to_flat_rejects_circular_reference() -> None:

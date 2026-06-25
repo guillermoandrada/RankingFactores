@@ -1,11 +1,12 @@
-"""IC analysis service with result caching."""
+﻿"""IC analysis service with result caching."""
 
 from __future__ import annotations
 
 from functools import lru_cache
 
-from modules.analytics.ic_analyzer import ICAnalyzer
-from modules.db import FinancialDatabase
+from modules.domain.analytics.ic_analyzer import ICAnalyzer
+from modules.infrastructure.db import FinancialDatabase
+from modules.infrastructure.market_data.providers.base import BasePriceProvider
 
 
 @lru_cache(maxsize=128)
@@ -23,8 +24,8 @@ def _cached_analyze_multivariate(
 
 
 class ICService:
-    def __init__(self, db: FinancialDatabase) -> None:
-        self._analyzer = ICAnalyzer(db=db)
+    def __init__(self, db: FinancialDatabase, price_provider: BasePriceProvider | None = None) -> None:
+        self._analyzer = ICAnalyzer(db=db, price_service=price_provider)
 
     def analyze(
         self,

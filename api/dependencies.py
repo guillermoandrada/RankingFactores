@@ -1,15 +1,15 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from api.services.period_service import PeriodService
-from modules.analytics.zscore import ZScoreCalculator
+from modules.domain.analytics.zscore import ZScoreCalculator
 from modules.config import RankingProfileResolver, RankingProfileStore
 from modules.config.derived_metrics import DerivedMetricStore
-from modules.db import FinancialDatabase
-from modules.ingestion import DataImporter
-from modules.market_data import YFinancePriceProvider
+from modules.infrastructure.db import FinancialDatabase
+from modules.infrastructure.ingestion import DataImporter
+from modules.infrastructure.market_data import HybridPriceProvider, YFinancePriceProvider
 
 if TYPE_CHECKING:
     from api.services.backtest_service import BacktestService
@@ -61,8 +61,15 @@ def get_portfolio_service():
 
 
 @lru_cache(maxsize=1)
-def get_price_provider() -> YFinancePriceProvider:
-    return YFinancePriceProvider()
+def get_price_provider() -> HybridPriceProvider:
+    return HybridPriceProvider(db=get_db(), yf_provider=YFinancePriceProvider())
+
+
+@lru_cache(maxsize=1)
+def get_price_service():
+    from api.services.price_service import PriceService
+
+    return PriceService(db=get_db())
 
 
 @lru_cache(maxsize=1)
@@ -84,4 +91,4 @@ def get_zscore_calculator() -> ZScoreCalculator:
 def get_ic_service() -> ICService:
     from api.services.ic_service import ICService
 
-    return ICService(db=get_db())
+    return ICService(db=get_db(), price_provider=get_price_provider())
