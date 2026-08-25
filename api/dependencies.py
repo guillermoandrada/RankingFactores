@@ -32,6 +32,13 @@ def get_period_service() -> PeriodService:
 
 
 @lru_cache(maxsize=1)
+def get_db_metric_service():
+    from api.services.db_metric_service import DbMetricService
+
+    return DbMetricService(db=get_db())
+
+
+@lru_cache(maxsize=1)
 def get_profile_store() -> RankingProfileStore:
     return RankingProfileStore()
 
@@ -69,7 +76,7 @@ def get_price_provider() -> HybridPriceProvider:
 def get_price_service():
     from api.services.price_service import PriceService
 
-    return PriceService(db=get_db())
+    return PriceService(db=get_db(), price_provider=get_price_provider())
 
 
 @lru_cache(maxsize=1)

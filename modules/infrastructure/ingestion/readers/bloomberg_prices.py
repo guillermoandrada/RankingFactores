@@ -2,9 +2,27 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import io
 
 import pandas as pd
+
+from modules.shared.tickers import canonical_ticker
+
+_PRICE_COLUMNS = ["ticker", "price_date", "close_price", "source"]
+
+
+@dataclass(frozen=True)
+class PriceFileParseResult:
+    """Parsed price rows plus what the parser had to discard."""
+
+    frame: pd.DataFrame
+    skipped_tickers: list[str] = field(default_factory=list)
+    skipped_rows: int = 0
+
+    @property
+    def is_empty(self) -> bool:
+        return self.frame.empty
 
 
 class BloombergPriceFileReader:
@@ -15,55 +33,78 @@ class BloombergPriceFileReader:
         Row 0 : metadata / title row — ignored
         Row 1 : column A blank or label; columns B+ = ticker symbols
         Row 2+ : column A = date (Excel date or YYYY-MM-DD string); columns B+ = close prices
+
+    Ticker headers are canonicalized (``AAPL US Equity`` -> ``AAPL``) so that stored
+    prices match the identifiers the rest of the application uses. Headers that
+    cannot be canonicalized are reported in ``skipped_tickers`` rather than dropped
+    silently.
     """
 
     _TICKER_ROW: int = 1
     _DATA_START_ROW: int = 2
 
-    def read(self, file_content: bytes) -> pd.DataFrame:
+    def read(self, file_content: bytes) -> PriceFileParseResult:
         """
-        Parse the file and return a long DataFrame with columns:
-        ['ticker', 'price_date', 'close_price', 'source'].
-        'source' is always 'bloomberg'. Rows with missing dates or prices are dropped.
+        Parse the file into long rows ['ticker', 'price_date', 'close_price', 'source'].
+
+        'source' is always 'bloomberg'. Rows with an unparseable date or a
+        non-numeric price are dropped and counted in ``skipped_rows``.
         """
         raw = pd.read_excel(io.BytesIO(file_content), header=None)
+        if raw.empty or raw.shape[0] <= self._DATA_START_ROW or raw.shape[1] < 2:
+            return PriceFileParseResult(frame=self._empty_frame())
 
-        ticker_values = raw.iloc[self._TICKER_ROW, 1:].tolist()
-        tickers = [
-            str(t).strip()
-            for t in ticker_values
-            if str(t or "").strip() not in ("", "nan", "None")
-        ]
-        if not tickers:
-            return pd.DataFrame(columns=["ticker", "price_date", "close_price", "source"])
+        header_values = raw.iloc[self._TICKER_ROW, 1:].tolist()
+        canonical_by_column: dict[int, str] = {}
+        skipped_tickers: list[str] = []
+        for offset, header in enumerate(header_values):
+            canonical = canonical_ticker(header)
+            if canonical:
+                canonical_by_column[offset + 1] = canonical
+            elif str(header or "").strip():
+                skipped_tickers.append(str(header).strip())
 
-        n_ticker_cols = len(tickers)
-        data = raw.iloc[self._DATA_START_ROW:, : n_ticker_cols + 1].copy()
+        if not canonical_by_column:
+            return PriceFileParseResult(
+                frame=self._empty_frame(),
+                skipped_tickers=skipped_tickers,
+            )
 
-        col_names = ["date"] + [
-            str(raw.iloc[self._TICKER_ROW, col_idx])
-            for col_idx in range(1, n_ticker_cols + 1)
-        ]
-        data.columns = col_names
+        column_indexes = sorted(canonical_by_column)
+        data = raw.iloc[self._DATA_START_ROW:, [0] + column_indexes].copy()
+        data.columns = ["date"] + [canonical_by_column[idx] for idx in column_indexes]
 
-        data["date"] = pd.to_datetime(data["date"], errors="coerce")
-        data = data.dropna(subset=["date"])
+        parsed_dates = pd.to_datetime(data["date"], errors="coerce")
+        rows_with_bad_dates = int(parsed_dates.isna().sum()) * len(column_indexes)
+        data = data.loc[parsed_dates.notna()].copy()
         if data.empty:
-            return pd.DataFrame(columns=["ticker", "price_date", "close_price", "source"])
+            return PriceFileParseResult(
+                frame=self._empty_frame(),
+                skipped_tickers=skipped_tickers,
+                skipped_rows=rows_with_bad_dates,
+            )
+        data["price_date"] = parsed_dates.loc[data.index].dt.strftime("%Y-%m-%d")
 
-        data["price_date"] = data["date"].dt.strftime("%Y-%m-%d")
-
-        price_cols = [c for c in data.columns if c not in ("date", "price_date")]
-        long = data[["price_date"] + price_cols].melt(
+        long = data.drop(columns=["date"]).melt(
             id_vars="price_date",
-            value_vars=price_cols,
             var_name="ticker",
             value_name="close_price",
         )
-        long["ticker"] = long["ticker"].str.strip()
         long["close_price"] = pd.to_numeric(long["close_price"], errors="coerce")
+        dropped_prices = int(long["close_price"].isna().sum())
         long = long.dropna(subset=["close_price"])
-        long = long[long["ticker"].str.len() > 0]
         long["source"] = "bloomberg"
 
-        return long[["ticker", "price_date", "close_price", "source"]].reset_index(drop=True)
+        # Duplicate headers for the same security collapse onto one canonical
+        # ticker; keep the last occurrence so the right-most column wins.
+        long = long.drop_duplicates(subset=["ticker", "price_date"], keep="last")
+
+        return PriceFileParseResult(
+            frame=long[_PRICE_COLUMNS].reset_index(drop=True),
+            skipped_tickers=skipped_tickers,
+            skipped_rows=rows_with_bad_dates + dropped_prices,
+        )
+
+    @staticmethod
+    def _empty_frame() -> pd.DataFrame:
+        return pd.DataFrame(columns=_PRICE_COLUMNS)

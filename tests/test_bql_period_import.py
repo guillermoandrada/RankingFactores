@@ -140,6 +140,31 @@ def _seed_security_metadata(db: FinancialDatabase, *, market_caps: list[float | 
     db.save_fundamentals(seed_df, "2023/12/31", index_code="SEED", mode="replace")
 
 
+def _with_blank_identifier_row(content: bytes) -> bytes:
+    """Append a row carrying data but no Bloomberg code to every data sheet."""
+    sheets = pd.read_excel(BytesIO(content), sheet_name=None, header=None)
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        for sheet_name, frame in sheets.items():
+            if sheet_name != "Config":
+                orphan = frame.iloc[[-1]].copy()
+                orphan.iloc[0, 0] = None
+                frame = pd.concat([frame, orphan], ignore_index=True)
+            frame.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
+    return buffer.getvalue()
+
+
+def test_bql_reader_drops_a_row_without_a_bloomberg_code(tmp_path) -> None:
+    """A blank identifier must not import as a security literally named 'nan'."""
+    file_path = tmp_path / "bql_blank.xlsx"
+    file_path.write_bytes(_with_blank_identifier_row(_build_bql_excel_bytes()))
+
+    result = BqlFileReader().read(str(file_path))
+
+    assert result["Ticker"].dropna().tolist() == ["AAA", "BBB"]
+    assert "nan" not in result["Ticker"].astype(str).tolist()
+
+
 def test_bql_reader_merges_three_sheets_and_extracts_period(tmp_path) -> None:
     file_path = tmp_path / "bql.xlsx"
     file_path.write_bytes(_build_bql_excel_bytes())

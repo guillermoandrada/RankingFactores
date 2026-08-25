@@ -8,13 +8,12 @@ from typing import Any
 import pandas as pd
 
 from modules.domain.portfolio.models import HoldingPosition
-
-_KNOWN_DUPLICATES = {"GOOG": "GOOGL", "NXP": "NXPI"}
+from modules.shared.tickers import canonical_ticker
 
 
 def normalize_ticker(value: Any) -> str:
-    ticker = str(value or "").strip().upper()
-    return _KNOWN_DUPLICATES.get(ticker, ticker)
+    """Portfolio-facing alias for the shared canonical ticker form."""
+    return canonical_ticker(value)
 
 
 def parse_holdings_rows(rows: list[dict[str, Any]]) -> tuple[list[HoldingPosition], float]:

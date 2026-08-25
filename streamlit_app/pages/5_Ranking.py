@@ -10,12 +10,18 @@ import streamlit as st
 from typing import Any
 
 from streamlit_app.client.api_client import ApiError
-from streamlit_app.ui import get_api_client, render_page_header, render_sidebar_api_test
+from streamlit_app.ui import (
+    get_api_client,
+    render_page_header,
+    render_sidebar_api_status,
+    select_period,
+    select_scoring_profile,
+)
 
 render_page_header("Ranking", "Compute rankings for a period and scoring profile. Choose sector or industry to see rankings in collapsible sections.")
 
-client = get_api_client("ranking")
-render_sidebar_api_test(client, "ranking_test_api")
+client = get_api_client()
+render_sidebar_api_status(client)
 
 try:
     periods = client.list_periods()
@@ -44,11 +50,9 @@ else:
         # Top-level selectors: period, default scoring profile, and optional index
         row1_col1, row1_col2, row1_col3 = st.columns([2, 2, 2])
         with row1_col1:
-            period = st.selectbox("Period", options=periods, key="ranking_period")
+            period = select_period(periods)
         with row1_col2:
-            scoring_profile = st.selectbox(
-                "Scoring profile", options=profile_names, key="ranking_profile"
-            )
+            scoring_profile = select_scoring_profile(profile_names)
         with row1_col3:
             index_options = ["(All indices)"] + sorted(indices)
             index_label = st.selectbox(

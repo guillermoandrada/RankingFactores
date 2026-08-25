@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 import streamlit as st
 
@@ -10,36 +12,174 @@ from streamlit_app.ui import (
     get_api_client,
     render_page_header,
     render_section,
-    render_sidebar_api_test,
+    render_sidebar_api_status,
 )
+
+_VARIABLE_READER = "bloomberg_individual_variable"
+
+_READER_LABELS = {
+    "bloomberg": "Bloomberg",
+    "bql": "BQL",
+    "reuters_metrics": "Reuters Metrics",
+    _VARIABLE_READER: "Bloomberg Individual Variable",
+}
+
+
+def _render_variable_upload_result(result: dict) -> None:
+    """Report a single-variable upload, which spans several periods at once."""
+    periods = result.get("periods", [])
+    st.success(
+        f"Variable **{result.get('variable', '')}** imported: "
+        f"**{result.get('records_count', 0):,}** values for "
+        f"**{result.get('securities_count', 0)}** securities "
+        f"across **{len(periods)}** period(s)."
+    )
+    if result.get("creates_securities"):
+        st.caption(
+            "The file carried names and GICS data, so missing securities were created "
+            "and each period's classification was refreshed."
+        )
+    else:
+        st.caption(
+            "Ticker and value only: values were appended to securities that already "
+            "exist. No security was created and no classification was changed."
+        )
+    if periods:
+        st.dataframe(pd.DataFrame(periods), width="stretch", hide_index=True)
+
+    securities_skipped = result.get("securities_skipped", [])
+    if securities_skipped:
+        st.warning(
+            f"{len(securities_skipped)} identifier(s) have no security in the database "
+            "and were skipped. Add long name and GICS columns to create them, or import "
+            "the period fundamentals first."
+        )
+        st.write(_truncated_list(securities_skipped))
+    skipped_periods = result.get("periods_skipped", [])
+    if skipped_periods:
+        st.warning(f"Period blocks skipped: {', '.join(skipped_periods)}")
+    rows_skipped = result.get("rows_skipped", 0)
+    if rows_skipped:
+        st.info(f"{rows_skipped:,} row(s) skipped for a missing ticker.")
+
+
+def _truncated_list(values: list[str], limit: int = 40) -> str:
+    """Comma-separated preview, so a wide universe cannot flood the page."""
+    shown = ", ".join(values[:limit])
+    return shown if len(values) <= limit else f"{shown} … (+{len(values) - limit} more)"
+
+
+def _values_match(new_value: Any, original_value: Any) -> bool:
+    """True when an edited cell is unchanged, treating every missing form as equal."""
+    new_missing = bool(pd.isna(new_value))
+    original_missing = bool(pd.isna(original_value))
+    if new_missing or original_missing:
+        return new_missing and original_missing
+    try:
+        return float(new_value) == float(original_value)
+    except (TypeError, ValueError):
+        return str(new_value) == str(original_value)
+
+
+def _collect_period_edits(
+    original_df: pd.DataFrame,
+    edited_df: pd.DataFrame,
+    metric_names: list[str],
+) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+    """
+    Compare the edited table against the loaded one.
+
+    Returns (updates, cleared_cells, invalid_cells). Cleared and invalid cells cannot be
+    expressed by the API, so the caller reports them instead of dropping them silently.
+    """
+    if "ticker" not in edited_df.columns or "ticker" not in original_df.columns:
+        return [], [], []
+    editable = [
+        name
+        for name in metric_names
+        if name in edited_df.columns and name in original_df.columns
+    ]
+    if not editable:
+        return [], [], []
+
+    baseline = original_df.drop_duplicates(subset="ticker", keep="first").set_index("ticker")
+
+    updates: list[dict[str, Any]] = []
+    cleared: list[str] = []
+    invalid: list[str] = []
+    for _, row in edited_df.iterrows():
+        ticker = row.get("ticker")
+        if not ticker or ticker not in baseline.index:
+            continue
+        original_row = baseline.loc[ticker]
+        for metric_name in editable:
+            new_value = row.get(metric_name)
+            if _values_match(new_value, original_row.get(metric_name)):
+                continue
+            cell = f"{ticker} · {metric_name}"
+            if pd.isna(new_value):
+                cleared.append(cell)
+                continue
+            try:
+                numeric_value = float(new_value)
+            except (TypeError, ValueError):
+                invalid.append(cell)
+                continue
+            updates.append(
+                {"ticker": str(ticker), "metric_name": metric_name, "value": numeric_value}
+            )
+    return updates, cleared, invalid
+
+
+def _render_save_report(report: dict) -> None:
+    """Report the outcome of the last save, including edits the API could not accept."""
+    saved = report.get("saved", 0)
+    if saved:
+        st.success(f"Updated {saved} values.")
+    cleared = report.get("cleared", [])
+    if cleared:
+        st.warning(
+            f"{len(cleared)} cell(s) were blanked. The API cannot store an empty value, so "
+            f"they were left unchanged: {_truncated_list(cleared)}"
+        )
+    invalid = report.get("invalid", [])
+    if invalid:
+        st.error(
+            f"{len(invalid)} cell(s) are not numeric and were not saved: "
+            f"{_truncated_list(invalid)}"
+        )
+
 
 render_page_header("Periods", "Create periods from Excel/CSV, view and edit content, remove securities/metrics, delete period.")
 
-client = get_api_client("periods")
-render_sidebar_api_test(client, "periods_test_api")
+client = get_api_client()
+render_sidebar_api_status(client)
 
 st.divider()
 tabs = st.tabs(["Create", "View & Edit", "Delete"])
 
 # --- Create tab ---
 with tabs[0]:
-    render_section("Create period from file", "Upload Bloomberg, BQL, or Reuters Excel (.xlsx, .xls).")
+    render_section(
+        "Create period from file",
+        "Upload Bloomberg, BQL, Reuters, or single-variable Excel (.xlsx, .xls).",
+    )
     upload_success_message = st.session_state.pop("period_upload_success", None)
     if upload_success_message:
         st.success(upload_success_message)
+    variable_upload_result = st.session_state.pop("period_variable_upload_result", None)
+    if variable_upload_result:
+        _render_variable_upload_result(variable_upload_result)
 
     reader = st.selectbox(
         "Reader",
-        options=["bloomberg", "bql", "reuters_metrics"],
+        options=["bloomberg", "bql", "reuters_metrics", _VARIABLE_READER],
         key="period_create_reader",
-        format_func=lambda value: {
-            "bloomberg": "Bloomberg",
-            "bql": "BQL",
-            "reuters_metrics": "Reuters Metrics",
-        }[value],
+        format_func=lambda value: _READER_LABELS[value],
     )
 
     target_period = None
+    sheet_name = ""
     existing_periods_for_append: list[str] = []
     upload_behavior = "replace"
 
@@ -93,6 +233,25 @@ with tabs[0]:
             "read factors from `Current`, `Past`, and `Estimated`, infer the period from "
             "`Config!B1`, and infer the universe from `Config!B2`."
         )
+    elif reader == _VARIABLE_READER:
+        st.markdown(
+            "One variable observed at several periods. **Row 1** = index name (A1) and period "
+            "date (B1); **row 2** = field labels (ignored); **row 3+** = the data, in either "
+            "layout:"
+        )
+        st.markdown(
+            "- **5 columns per period** — ticker, long name, GICS sector, GICS industry "
+            "group, value. Carries enough to **create** securities that are new to the "
+            "database.\n"
+            "- **2 columns per period** — ticker, value. Values are appended to securities "
+            "that **already exist**; unknown tickers are reported and skipped."
+        )
+        st.caption(
+            "The sheet name becomes the metric name. Every period in the file is imported in "
+            "append mode: this variable replaces its own previous values and the period's other "
+            "metrics are untouched. Periods that do not exist yet are created. The index name is "
+            "reported back for checking only — index membership is never rewritten."
+        )
     else:
         st.caption("Bloomberg uploads infer the period directly from the file.")
 
@@ -101,7 +260,13 @@ with tabs[0]:
         type=["xlsx", "xls"],
         key="period_create_file",
     )
-    if reader in ("bloomberg", "bql"):
+    if reader == _VARIABLE_READER:
+        sheet_name = st.text_input(
+            "Sheet",
+            key="period_variable_sheet",
+            help="Leave empty to read the first sheet. The sheet name becomes the metric name.",
+        )
+    elif reader in ("bloomberg", "bql"):
         upload_behavior = st.selectbox(
             "If period exists",
             options=["replace", "append"],
@@ -109,9 +274,21 @@ with tabs[0]:
             key="period_if_exists",
             help="replace = overwrite; append = merge new metrics/securities",
         )
-    if st.button("Create period", type="primary", key="period_create_btn"):
+    button_label = "Upload variable" if reader == _VARIABLE_READER else "Create period"
+    if st.button(button_label, type="primary", key="period_create_btn"):
         if not file:
             st.error("Select a file first.")
+        elif reader == _VARIABLE_READER:
+            try:
+                with st.spinner("Importing every period in the file — around a second each…"):
+                    st.session_state["period_variable_upload_result"] = client.upload_variable_file(
+                        file.read(),
+                        file.name,
+                        sheet=sheet_name.strip() or None,
+                    )
+                st.rerun()
+            except ApiError as exc:
+                st.error(str(exc))
         elif reader == "reuters_metrics" and upload_behavior == "append" and not existing_periods_for_append:
             st.error("No existing periods are available for append.")
         elif reader == "reuters_metrics" and not str(target_period or "").strip():
@@ -176,12 +353,20 @@ with tabs[1]:
             if preferred_columns:
                 df = df[preferred_columns + remaining_columns]
             metrics = content.get("metrics", [])
-            metric_ids_map = {}
+            db_metrics: list[dict] = []
+            metric_ids_map: dict[str, int] = {}
             try:
                 db_metrics = client.list_db_metrics()
                 metric_ids_map = {m["metric_name"]: m["metric_id"] for m in db_metrics if m.get("metric_id")}
-            except ApiError:
-                pass
+            except ApiError as exc:
+                st.warning(
+                    f"Could not load metric definitions: {exc}. Removing a metric and editing "
+                    "metric parameters are unavailable until the API responds."
+                )
+
+            save_report = st.session_state.pop("period_save_report", None)
+            if save_report:
+                _render_save_report(save_report)
 
             st.markdown("**Edit values in the table, then click Save changes.**")
             edited_df = st.data_editor(
@@ -197,44 +382,23 @@ with tabs[1]:
             c1, c2, c3 = st.columns(3)
             with c1:
                 if st.button("Save changes", type="primary", key="period_save_btn"):
-                    updates = []
-                    for _, row in edited_df.iterrows():
-                        ticker = row.get("ticker")
-                        if not ticker:
-                            continue
-                        for m in metrics:
-                            if m not in edited_df.columns:
-                                continue
-                            new_val = row.get(m)
-                            orig_row = df[df["ticker"] == ticker]
-                            if orig_row.empty:
-                                continue
-                            orig_val = orig_row[m].iloc[0]
-                            if pd.isna(new_val) and pd.isna(orig_val):
-                                continue
-                            if pd.isna(new_val) != pd.isna(orig_val) or (
-                                not pd.isna(new_val) and float(orig_val) != float(new_val)
-                            ):
-                                if not pd.isna(new_val):
-                                    try:
-                                        val = float(new_val)
-                                        updates.append({
-                                            "ticker": str(ticker),
-                                            "metric_name": m,
-                                            "value": val,
-                                        })
-                                    except (TypeError, ValueError):
-                                        pass
-                    if updates:
+                    updates, cleared, invalid = _collect_period_edits(df, edited_df, metrics)
+                    if not updates and not cleared and not invalid:
+                        st.info("No changes to save.")
+                    elif not updates:
+                        _render_save_report({"saved": 0, "cleared": cleared, "invalid": invalid})
+                    else:
                         try:
                             result = client.edit_period(period_name, update_values=updates)
-                            st.success(f"Updated {result.get('updated_values', 0)} values.")
+                            st.session_state["period_save_report"] = {
+                                "saved": result.get("updated_values", 0),
+                                "cleared": cleared,
+                                "invalid": invalid,
+                            }
                             st.session_state.pop("period_content", None)
                             st.rerun()
                         except ApiError as exc:
                             st.error(str(exc))
-                    else:
-                        st.info("No changes to save.")
 
             with c2:
                 st.caption("Remove a security from this period")

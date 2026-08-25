@@ -3,7 +3,20 @@
     "allow": [
       "Bash(.venv/Scripts/python.exe -m pytest tests/ -x -q)",
       "Bash(.venv/Scripts/python.exe -c ' *)",
-      "Bash(.venv/Scripts/python.exe -m pytest tests/ -q)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests/ -q)",
+      "Bash(python -c ' *)",
+      "Bash(python -m pytest tests/test_bloomberg_individual_variable_reader.py -q)",
+      "Bash(python -m pytest tests/test_db_metric_service.py -q)",
+      "Bash(python -m pytest tests/test_db_metrics_api.py -q)",
+      "Bash(python -m pytest tests -q)",
+      "Bash(rm -f \"C:/Users/Lenovo/AppData/Local/Temp/claude/C--Users-Lenovo-Documents-VSCode-rankingfactores-RankingFactores/77cc4fc4-c4a8-4e5c-bccc-0df414e9b228/scratchpad/copy.db\")",
+      "Bash(python -)",
+      "Bash(python -m pytest tests/test_db_metrics_api.py tests/test_db_metric_service.py -q)",
+      "Bash(grep -n \"^#\\\\{1,3\\\\} \" docs/USER_GUIDE.md)",
+      "Bash(python -c \"import streamlit_app.pages\")",
+      "Bash(python -m py_compile streamlit_app/pages/2_Metrics.py streamlit_app/client/api_client.py api/routers/db_metrics.py api/services/db_metric_service.py)",
+      "Bash(python -m py_compile streamlit_app/pages/2_Metrics.py)",
+      "Bash(python -m pytest tests/test_ticker_canonicalization.py -q)"
     ]
   }
 }

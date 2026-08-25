@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from streamlit_app.client.api_client import ApiError
-from streamlit_app.ui import get_api_client, render_page_header
+from streamlit_app.ui import get_api_client, render_page_header, render_sidebar_api_status
 
 render_page_header(
     "Price Data",
@@ -14,7 +14,8 @@ render_page_header(
     "Cached prices take priority over yfinance in IC analysis and backtests.",
 )
 
-client = get_api_client("price_data")
+client = get_api_client()
+render_sidebar_api_status(client)
 
 upload_tab, manage_tab = st.tabs(["Upload", "Manage"])
 

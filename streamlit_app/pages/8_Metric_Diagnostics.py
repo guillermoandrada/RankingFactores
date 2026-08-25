@@ -1,6 +1,8 @@
-﻿"""Metric Diagnostics — distribution shape and outlier detection per period."""
+"""Metric Diagnostics — distribution shape and outlier detection per period."""
 
 from __future__ import annotations
+
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -8,7 +10,14 @@ import streamlit as st
 from sqlalchemy import and_, case, func, select
 
 from modules.infrastructure.db import FinancialDatabase
-from streamlit_app.ui.layout import render_page_header
+from streamlit_app.ui import (
+    read_result,
+    render_page_header,
+    render_result_caption,
+    store_result,
+)
+
+_DIAGNOSTICS_RESULT_KEY = "metric_diagnostics_result"
 
 
 # ---------- Data loading ----------
@@ -134,6 +143,8 @@ def _load_metric_values_with_group(
 
 _QUANTILE_LEVELS = [0.01, 0.05, 0.10, 0.25, 0.75, 0.90, 0.95, 0.99]
 
+_GROUP_BY_AGGREGATION = {"By sector": "sector", "By industry": "industry"}
+
 
 def _stats_for_series(v: pd.Series) -> dict:
     v = v.dropna()
@@ -211,6 +222,28 @@ def _compute_group_period_stats(values: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _compute_diagnostics(
+    db: FinancialDatabase, *, metric_id: int, aggregation: str
+) -> dict[str, Any]:
+    """Run every query this page needs, so rendering never touches the database again."""
+    counts = _load_period_counts(db, metric_id=metric_id)
+    values = _load_metric_values(db, metric_id=metric_id)
+    payload: dict[str, Any] = {
+        "stats": _compute_period_stats(values, counts),
+        "overall_mean": _load_metric_overall_mean(db, metric_id=metric_id),
+        "group_stats": None,
+        "group_label": "",
+    }
+    group_by = _GROUP_BY_AGGREGATION.get(aggregation)
+    if group_by:
+        grouped = _load_metric_values_with_group(db, metric_id=metric_id, group_by=group_by)
+        payload["group_stats"] = (
+            pd.DataFrame() if grouped.empty else _compute_group_period_stats(grouped)
+        )
+        payload["group_label"] = group_by.capitalize()
+    return payload
+
+
 # ---------- Color rules ----------
 
 _COLOR_GREEN = "background-color: #c6efce; color: #006100"
@@ -250,6 +283,130 @@ def _color_std_mad(v):  return _traffic(v, 2.0, 4.0)
 def _color_outliers(v): return _traffic(v, 5.0, 15.0)
 
 
+# ---------- Rendering ----------
+
+
+def _render_headline(stats: pd.DataFrame, overall_mean: float | None) -> None:
+    h1, h2, h3 = st.columns(3)
+    with h1:
+        st.metric("Periods", int(stats["period"].nunique()))
+    with h2:
+        st.metric("Overall mean", "—" if overall_mean is None else f"{overall_mean:.6g}")
+    with h3:
+        total_rows = float(stats["total"].sum())
+        weighted_na = (
+            float(stats["na_count"].sum()) / total_rows * 100.0 if total_rows > 0 else 0.0
+        )
+        st.metric("Weighted % N/A", f"{weighted_na:.2f}%")
+
+
+def _render_period_table(stats: pd.DataFrame) -> None:
+    st.markdown("### Per-period distribution")
+    st.caption(
+        "**Skew** = (Mean − Median) / MAD — 🔵 left tail · ⚪ symmetric · 🔴 right tail "
+        "(|value| ≥ 1 = strong). "
+        "**Std/MAD** & **% Outliers** (Tukey 1.5·IQR) — 🟢 clean · 🟡 moderate · 🔴 contaminated."
+    )
+
+    main = stats[[
+        "period", "total", "na_pct", "min", "max",
+        "skew_idx", "std", "std_mad", "pct_outliers",
+    ]].rename(columns={
+        "period": "Period",
+        "total": "Rows",
+        "na_pct": "% N/A",
+        "min": "Min",
+        "max": "Max",
+        "skew_idx": "Skew",
+        "std": "Std",
+        "std_mad": "Std/MAD",
+        "pct_outliers": "% Outliers",
+    })
+
+    styler = (
+        main.style
+        .format({
+            "% N/A": "{:.2f}%",
+            "Min": "{:.4g}",
+            "Max": "{:.4g}",
+            "Skew": "{:+.2f}",
+            "Std": "{:.4g}",
+            "Std/MAD": "{:.2f}",
+            "% Outliers": "{:.2f}%",
+        }, na_rep="—")
+        .map(_color_na, subset=["% N/A"])
+        .map(_color_skew, subset=["Skew"])
+        .map(_color_std_mad, subset=["Std/MAD"])
+        .map(_color_outliers, subset=["% Outliers"])
+    )
+    st.dataframe(styler, width="stretch", hide_index=True)
+
+    with st.expander("Show mean, median, percentiles & split outliers"):
+        detail = stats[[
+            "period", "median", "mean", "mad",
+            "pct_outliers_above", "pct_outliers_below",
+            "p01", "p05", "p10", "p90", "p95", "p99",
+        ]].rename(columns={
+            "period": "Period",
+            "median": "Median",
+            "mean": "Mean",
+            "mad": "MAD",
+            "pct_outliers_above": "% Out ↑",
+            "pct_outliers_below": "% Out ↓",
+            "p01": "P01", "p05": "P05", "p10": "P10",
+            "p90": "P90", "p95": "P95", "p99": "P99",
+        })
+        st.dataframe(detail, width="stretch", hide_index=True)
+
+
+def _render_group_table(group_stats: pd.DataFrame, group_label: str) -> None:
+    st.divider()
+    st.markdown(f"### Breakdown by {group_label.lower()}")
+    st.caption(
+        "Same color rules as the main table. "
+        "Pick a period to compare groups against each other."
+    )
+
+    periods_avail = sorted(group_stats["period"].astype(str).unique().tolist())
+    # Safe to rerender: the result lives in session state, so changing this cannot clear it.
+    sel_period = st.selectbox(
+        "Period",
+        options=periods_avail,
+        index=len(periods_avail) - 1,
+        key="diag_breakdown_period",
+    )
+    one = group_stats.loc[group_stats["period"].astype(str) == str(sel_period)]
+    one = one[[
+        "group", "n", "min", "max",
+        "skew_idx", "std", "std_mad", "pct_outliers",
+    ]].rename(columns={
+        "group": group_label,
+        "n": "Rows",
+        "min": "Min",
+        "max": "Max",
+        "skew_idx": "Skew",
+        "std": "Std",
+        "std_mad": "Std/MAD",
+        "pct_outliers": "% Outliers",
+    }).sort_values(group_label)
+
+    g_styler = (
+        one.style
+        .format({
+            "Min": "{:.4g}",
+            "Max": "{:.4g}",
+            "Skew": "{:+.2f}",
+            "Std": "{:.4g}",
+            "Std/MAD": "{:.2f}",
+            "% Outliers": "{:.2f}%",
+        }, na_rep="—")
+        .map(_color_skew, subset=["Skew"])
+        .map(_color_std_mad, subset=["Std/MAD"])
+        .map(_color_outliers, subset=["% Outliers"])
+    )
+    st.dataframe(g_styler, width="stretch", hide_index=True)
+
+
 # ---------- Page ----------
 
 render_page_header(
@@ -284,148 +441,42 @@ with st.container(border=True):
 
 if not metric_names:
     st.info("No metrics found. Upload period data first.")
-elif run:
-    metric_id = name_to_id[selected_metric]
+    st.stop()
+
+current_inputs = {"Metric": selected_metric, "Breakdown": aggregation}
+
+if run:
     with st.spinner("Computing diagnostics..."):
-        counts = _load_period_counts(db, metric_id=metric_id)
-        values = _load_metric_values(db, metric_id=metric_id)
-        df = _compute_period_stats(values, counts)
-        overall_mean = _load_metric_overall_mean(db, metric_id=metric_id)
+        store_result(
+            _DIAGNOSTICS_RESULT_KEY,
+            _compute_diagnostics(
+                db, metric_id=name_to_id[selected_metric], aggregation=aggregation
+            ),
+            inputs=current_inputs,
+        )
 
-    if df.empty:
-        st.warning("No rows found for this metric.")
+# Rendered from session state, so the breakdown selector below cannot clear the tables.
+stored_result = read_result(_DIAGNOSTICS_RESULT_KEY)
+if stored_result is None:
+    st.info("Pick a metric and press Compute to see diagnostics here.")
+    st.stop()
+
+st.divider()
+render_result_caption(stored_result, current_inputs)
+
+payload = stored_result.payload
+period_stats = payload["stats"]
+if period_stats.empty:
+    st.warning("No rows found for this metric.")
+    st.stop()
+
+_render_headline(period_stats, payload["overall_mean"])
+st.divider()
+_render_period_table(period_stats)
+
+group_stats = payload["group_stats"]
+if group_stats is not None:
+    if group_stats.empty:
+        st.info("No sector/industry breakdown data available.")
     else:
-        # Headline
-        st.divider()
-        h1, h2, h3 = st.columns(3)
-        with h1:
-            st.metric("Periods", int(df["period"].nunique()))
-        with h2:
-            st.metric(
-                "Overall mean",
-                "—" if overall_mean is None else f"{overall_mean:.6g}",
-            )
-        with h3:
-            total_rows = float(df["total"].sum())
-            weighted_na = (
-                float(df["na_count"].sum()) / total_rows * 100.0 if total_rows > 0 else 0.0
-            )
-            st.metric("Weighted % N/A", f"{weighted_na:.2f}%")
-
-        # Main per-period table
-        st.divider()
-        st.markdown("### Per-period distribution")
-        st.caption(
-            "**Skew** = (Mean − Median) / MAD — 🔵 left tail · ⚪ symmetric · 🔴 right tail "
-            "(|value| ≥ 1 = strong). "
-            "**Std/MAD** & **% Outliers** (Tukey 1.5·IQR) — 🟢 clean · 🟡 moderate · 🔴 contaminated."
-        )
-
-        main = df[[
-            "period", "total", "na_pct", "min", "max",
-            "skew_idx", "std", "std_mad", "pct_outliers",
-        ]].copy()
-        main = main.rename(columns={
-            "period": "Period",
-            "total": "Rows",
-            "na_pct": "% N/A",
-            "min": "Min",
-            "max": "Max",
-            "skew_idx": "Skew",
-            "std": "Std",
-            "std_mad": "Std/MAD",
-            "pct_outliers": "% Outliers",
-        })
-
-        styler = (
-            main.style
-            .format({
-                "% N/A": "{:.2f}%",
-                "Min": "{:.4g}",
-                "Max": "{:.4g}",
-                "Skew": "{:+.2f}",
-                "Std": "{:.4g}",
-                "Std/MAD": "{:.2f}",
-                "% Outliers": "{:.2f}%",
-            }, na_rep="—")
-            .map(_color_na, subset=["% N/A"])
-            .map(_color_skew, subset=["Skew"])
-            .map(_color_std_mad, subset=["Std/MAD"])
-            .map(_color_outliers, subset=["% Outliers"])
-        )
-        st.dataframe(styler, width="stretch", hide_index=True)
-
-        with st.expander("Show mean, median, percentiles & split outliers"):
-            detail = df[[
-                "period", "median", "mean", "mad",
-                "pct_outliers_above", "pct_outliers_below",
-                "p01", "p05", "p10", "p90", "p95", "p99",
-            ]].copy()
-            detail = detail.rename(columns={
-                "period": "Period",
-                "median": "Median",
-                "mean": "Mean",
-                "mad": "MAD",
-                "pct_outliers_above": "% Out ↑",
-                "pct_outliers_below": "% Out ↓",
-                "p01": "P01", "p05": "P05", "p10": "P10",
-                "p90": "P90", "p95": "P95", "p99": "P99",
-            })
-            st.dataframe(detail, width="stretch", hide_index=True)
-
-        # Sector / Industry breakdown
-        if aggregation in {"By sector", "By industry"}:
-            group_by = "sector" if aggregation == "By sector" else "industry"
-            grouped = _load_metric_values_with_group(db, metric_id=metric_id, group_by=group_by)
-            if grouped.empty:
-                st.info("No sector/industry breakdown data available.")
-            else:
-                st.divider()
-                group_label = "Sector" if group_by == "sector" else "Industry"
-                st.markdown(f"### Breakdown by {group_label.lower()}")
-                st.caption(
-                    "Same color rules as the main table. "
-                    "Pick a period to compare groups against each other."
-                )
-
-                gstats = _compute_group_period_stats(grouped)
-                if gstats.empty:
-                    st.info("No data after grouping.")
-                else:
-                    periods_avail = sorted(gstats["period"].astype(str).unique().tolist())
-                    sel_period = st.selectbox(
-                        "Period",
-                        options=periods_avail,
-                        index=len(periods_avail) - 1,
-                        key="diag_breakdown_period",
-                    )
-                    one = gstats.loc[gstats["period"].astype(str) == str(sel_period)].copy()
-                    one = one[[
-                        "group", "n", "min", "max",
-                        "skew_idx", "std", "std_mad", "pct_outliers",
-                    ]].rename(columns={
-                        "group": group_label,
-                        "n": "Rows",
-                        "min": "Min",
-                        "max": "Max",
-                        "skew_idx": "Skew",
-                        "std": "Std",
-                        "std_mad": "Std/MAD",
-                        "pct_outliers": "% Outliers",
-                    }).sort_values(group_label)
-
-                    g_styler = (
-                        one.style
-                        .format({
-                            "Min": "{:.4g}",
-                            "Max": "{:.4g}",
-                            "Skew": "{:+.2f}",
-                            "Std": "{:.4g}",
-                            "Std/MAD": "{:.2f}",
-                            "% Outliers": "{:.2f}%",
-                        }, na_rep="—")
-                        .map(_color_skew, subset=["Skew"])
-                        .map(_color_std_mad, subset=["Std/MAD"])
-                        .map(_color_outliers, subset=["% Outliers"])
-                    )
-                    st.dataframe(g_styler, width="stretch", hide_index=True)
+        _render_group_table(group_stats, payload["group_label"])

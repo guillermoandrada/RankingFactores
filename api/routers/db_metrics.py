@@ -1,13 +1,38 @@
-"""DB metrics router: update higher_is_better and N/A treatment."""
+"""DB metrics router: upload variable values, update higher_is_better and N/A treatment."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
-from api.dependencies import get_db
+from api.dependencies import get_db, get_db_metric_service
 from api.schemas.metrics import MetricUpdateRequest
+from api.services.db_metric_service import DbMetricService
 
 router = APIRouter(prefix="/db-metrics", tags=["metrics"])
+
+
+@router.post("", status_code=201)
+async def create_db_metric_from_file(
+    file: UploadFile = File(...),
+    sheet: str | None = Query(
+        default=None,
+        description="Sheet to read. Defaults to the first sheet; its name is the variable name.",
+    ),
+    service: DbMetricService = Depends(get_db_metric_service),
+):
+    """
+    Create a DB metric from a Bloomberg individual-variable Excel file.
+
+    The file holds one variable observed at several periods; its values replace the
+    variable's existing values in every period the file covers.
+    """
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="File must be .xlsx or .xls.")
+    content = await file.read()
+    try:
+        return service.ingest_variable_file(content, file.filename, sheet_name=sheet)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.put("/{metric_id}")

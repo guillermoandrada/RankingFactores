@@ -20,6 +20,11 @@ def _pooled_http_client(base_url: str, timeout_seconds: float) -> httpx.Client:
     return _HTTP_CLIENTS[key]
 
 
+def _read_timeout(client: httpx.Client) -> float:
+    """Read timeout of a client, for error messages. 0 when it is unbounded."""
+    return client.timeout.read or 0.0
+
+
 class ApiError(RuntimeError):
     pass
 
@@ -36,8 +41,26 @@ class RankingApiClient:
         self._http = _pooled_http_client(self.base_url, timeout_seconds)
         self._http_long = _pooled_http_client(self.base_url, long_timeout_seconds)
 
-    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
-        response = self._http.request(method, path, **kwargs)
+    def _request(self, method: str, path: str, *, long: bool = False, **kwargs: Any) -> Any:
+        """
+        Send a request and translate every failure into ApiError.
+
+        `long=True` selects the long-timeout client, for endpoints that legitimately run
+        for minutes: file imports, backtests and IC analysis. Transport failures are
+        wrapped too, so callers only ever have to catch ApiError.
+        """
+        client = self._http_long if long else self._http
+        try:
+            response = client.request(method, path, **kwargs)
+        except httpx.TimeoutException as exc:
+            raise ApiError(
+                f"{method} {path} timed out after {_read_timeout(client):.0f}s. "
+                "The server may still be finishing the request — check the result "
+                "before retrying."
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise ApiError(f"{method} {path} could not reach the API: {exc}") from exc
+
         if response.status_code >= 400:
             try:
                 detail = response.json()
@@ -85,15 +108,13 @@ class RankingApiClient:
             params["period"] = period
         if index_code:
             params["index_code"] = index_code
-        files = {"file": (filename, file_content)}
-        response = self._http.post("/periods", params=params, files=files)
-        if response.status_code >= 400:
-            try:
-                detail = response.json()
-            except Exception:
-                detail = response.text
-            raise ApiError(f"POST /periods failed: {response.status_code} {detail}")
-        return response.json()
+        return self._request(
+            "POST",
+            "/periods",
+            params=params,
+            files={"file": (filename, file_content)},
+            long=True,
+        )
 
     def update_period_with_file(
         self,
@@ -102,16 +123,12 @@ class RankingApiClient:
         filename: str,
     ) -> dict[str, Any]:
         """Replace period content by uploading a new file."""
-        path = f"/periods/{quote(period, safe='')}"
-        files = {"file": (filename, file_content)}
-        response = self._http.put(path, files=files)
-        if response.status_code >= 400:
-            try:
-                detail = response.json()
-            except Exception:
-                detail = response.text
-            raise ApiError(f"PUT /periods/{period} failed: {response.status_code} {detail}")
-        return response.json()
+        return self._request(
+            "PUT",
+            f"/periods/{quote(period, safe='')}",
+            files={"file": (filename, file_content)},
+            long=True,
+        )
 
     def delete_period(self, period: str) -> dict[str, Any]:
         """Fully delete a period (all fundamental values and index membership). Returns {} on success (204)."""
@@ -209,6 +226,27 @@ class RankingApiClient:
             raise ValueError("Provide at least one of higher_is_better or na_handling.")
         return self._request("PUT", f"/db-metrics/{metric_id}", json=body)
 
+    def upload_variable_file(
+        self,
+        file_content: bytes,
+        filename: str,
+        *,
+        sheet: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Upload a Bloomberg individual-variable Excel file (one variable, several periods).
+
+        Uses the long timeout: the server imports every period in the file, which takes
+        roughly a second per period.
+        """
+        return self._request(
+            "POST",
+            "/db-metrics",
+            params={"sheet": sheet} if sheet else None,
+            files={"file": (filename, file_content, "application/octet-stream")},
+            long=True,
+        )
+
     def list_sectors(self) -> list[str]:
         payload = self._request("GET", "/reference/sectors")
         return payload.get("sectors", [])
@@ -290,28 +328,14 @@ class RankingApiClient:
         body: dict[str, Any],
     ) -> dict[str, Any]:
         """Run a backtest for an already-built portfolio."""
-        response = self._http_long.post("/backtests/portfolio", json=body)
-        if response.status_code >= 400:
-            try:
-                detail = response.json()
-            except Exception:
-                detail = response.text
-            raise ApiError(f"POST /backtests/portfolio failed: {response.status_code} {detail}")
-        return response.json()
+        return self._request("POST", "/backtests/portfolio", json=body, long=True)
 
     def run_strategy_backtest(
         self,
         body: dict[str, Any],
     ) -> dict[str, Any]:
         """Run a historical strategy backtest over multiple periods."""
-        response = self._http_long.post("/backtests/strategy", json=body)
-        if response.status_code >= 400:
-            try:
-                detail = response.json()
-            except Exception:
-                detail = response.text
-            raise ApiError(f"POST /backtests/strategy failed: {response.status_code} {detail}")
-        return response.json()
+        return self._request("POST", "/backtests/strategy", json=body, long=True)
 
     def run_ranking_batch(
         self,
@@ -367,28 +391,31 @@ class RankingApiClient:
         }
         if periods is not None:
             body["periods"] = periods
-        response = self._http_long.post("/ic", json=body)
-        if response.status_code >= 400:
-            try:
-                detail = response.json()
-            except Exception:
-                detail = response.text
-            raise ApiError(f"POST /ic failed: {response.status_code} {detail}")
-        return response.json()
+        return self._request("POST", "/ic", json=body, long=True)
 
     def upload_price_file(self, file_content: bytes, filename: str) -> dict[str, Any]:
         """Upload a Bloomberg wide-format Excel price file."""
-        response = self._http.post(
+        return self._request(
+            "POST",
             "/prices/upload",
             files={"file": (filename, file_content, "application/octet-stream")},
+            long=True,
         )
-        if response.status_code >= 400:
-            try:
-                detail = response.json()
-            except Exception:
-                detail = response.text
-            raise ApiError(f"POST /prices/upload failed: {response.status_code} {detail}")
-        return response.json()
+
+    def get_latest_prices(self, tickers: list[str]) -> dict[str, Any]:
+        """
+        Return the latest adjusted close per ticker.
+
+        Resolution happens server-side through the hybrid provider, so uploaded
+        Bloomberg prices take priority over Yahoo Finance.
+        """
+        if not tickers:
+            raise ValueError("Provide at least one ticker.")
+        return self._request(
+            "GET",
+            "/prices/latest",
+            params={"tickers": ",".join(tickers)},
+        )
 
     def list_cached_price_tickers(self) -> list[dict[str, Any]]:
         """List all tickers with cached price data and their date ranges."""
@@ -397,14 +424,7 @@ class RankingApiClient:
 
     def delete_cached_price_tickers(self, tickers: list[str]) -> dict[str, Any]:
         """Delete cached price data for the given tickers."""
-        response = self._http.request("DELETE", "/prices/tickers", json=tickers)
-        if response.status_code >= 400:
-            try:
-                detail = response.json()
-            except Exception:
-                detail = response.text
-            raise ApiError(f"DELETE /prices/tickers failed: {response.status_code} {detail}")
-        return response.json()
+        return self._request("DELETE", "/prices/tickers", json=tickers)
 
     def export_ranking_xlsx(
         self,

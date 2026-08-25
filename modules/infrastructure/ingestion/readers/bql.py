@@ -7,6 +7,7 @@ import pandas as pd
 
 from modules.infrastructure.ingestion.readers.base import BaseFileReader
 from modules.infrastructure.ingestion.readers.bloomberg import _format_date_as_period
+from modules.shared.tickers import ticker_from_bloomberg_id
 
 _DATA_SHEETS = ("Current", "Past", "Estimated")
 _NAME_SHEET = "Name"
@@ -68,9 +69,8 @@ class BqlFileReader(BaseFileReader):
             on="Ticker",
             how="right",
         )
-        combined = combined.dropna(how="all")
-        combined["Ticker"] = combined["Ticker"].replace("", pd.NA)
-        return combined
+        # Every sheet reader already returns NA for a missing ticker.
+        return combined.dropna(how="all")
 
     def extract_period(self, filepath: str) -> str:
         try:
@@ -111,7 +111,7 @@ class BqlFileReader(BaseFileReader):
             raise ValueError(f"BQL sheet '{sheet_name}' does not contain factor columns.")
 
         renamed = raw.rename(columns={identifier_column: "Ticker"})
-        renamed["Ticker"] = renamed["Ticker"].map(self._extract_ticker)
+        renamed["Ticker"] = self._read_tickers(renamed["Ticker"])
 
         numeric_values = renamed[factor_columns].apply(pd.to_numeric, errors="coerce")
         normalized = pd.concat([renamed[["Ticker"]], numeric_values], axis=1)
@@ -147,7 +147,7 @@ class BqlFileReader(BaseFileReader):
                 name_column: "Long Name",
             }
         )[["Ticker", "Long Name"]].copy()
-        normalized["Ticker"] = normalized["Ticker"].map(self._extract_ticker)
+        normalized["Ticker"] = self._read_tickers(normalized["Ticker"])
         duplicate_tickers = (
             normalized["Ticker"].dropna().astype(str).value_counts().loc[lambda values: values > 1]
         )
@@ -183,7 +183,7 @@ class BqlFileReader(BaseFileReader):
                 "GICS Industry Group Name",
             ]
         ].copy()
-        normalized["Ticker"] = normalized["Ticker"].map(self._extract_ticker)
+        normalized["Ticker"] = self._read_tickers(normalized["Ticker"])
         duplicate_tickers = (
             normalized["Ticker"].dropna().astype(str).value_counts().loc[lambda values: values > 1]
         )
@@ -195,11 +195,9 @@ class BqlFileReader(BaseFileReader):
 
         return normalized
 
-    def _extract_ticker(self, value: object) -> str | None:
-        raw = str(value or "").strip()
-        if not raw:
-            return None
-        return raw.split()[0].strip() or None
+    def _read_tickers(self, identifiers: pd.Series) -> pd.Series:
+        """Reduce Bloomberg identifiers to tickers, leaving empty cells as NA."""
+        return identifiers.map(ticker_from_bloomberg_id).replace("", pd.NA)
 
     def _resolve_column(
         self,

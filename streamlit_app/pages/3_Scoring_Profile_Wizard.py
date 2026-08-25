@@ -5,14 +5,14 @@ import json
 import streamlit as st
 
 from streamlit_app.client.api_client import ApiError
-from streamlit_app.ui import get_api_client, render_page_header, render_sidebar_api_test
+from streamlit_app.ui import get_api_client, render_page_header, render_sidebar_api_status
 from streamlit_app.components.wizard.steps import convert_wizard_to_profile, render_transforms, validate_profile_payload
 from streamlit_app.components.wizard.tree_editor import render_step2_base_structure
 
 render_page_header("Scoring Profile Wizard", "Step-by-step builder for scoring methodologies with nested composition boxes.")
 
-client = get_api_client("wizard")
-render_sidebar_api_test(client, "wizard_test_api")
+client = get_api_client()
+render_sidebar_api_status(client)
 
 if "wizard_step" not in st.session_state:
     st.session_state.wizard_step = 1
@@ -73,6 +73,24 @@ elif st.session_state.wizard_step == 3:
         warnings.append("Profile name is empty.")
     warnings.extend(validate_profile_payload(legacy_payload))
 
+    try:
+        existing_profile_names = set(client.list_scoring_profiles().keys())
+    except ApiError as exc:
+        existing_profile_names = set()
+        st.warning(f"Could not check existing profile names: {exc}")
+
+    name_taken = bool(profile_name) and profile_name in existing_profile_names
+    overwrite_confirmed = False
+    if name_taken:
+        st.warning(
+            f"A scoring profile named '{profile_name}' already exists. "
+            "Saving replaces it and its current structure cannot be recovered."
+        )
+        overwrite_confirmed = st.checkbox(
+            f"Overwrite '{profile_name}'",
+            key="wizard_confirm_overwrite",
+        )
+
     transforms = st.session_state.get("wizard_transforms", [])
     method = st.session_state.get("wizard_base_method", "linear")
     profile = convert_wizard_to_profile(base_profile, transforms=transforms, method=method)
@@ -85,8 +103,9 @@ elif st.session_state.wizard_step == 3:
     st.caption("Normalization, winsorization, and aggregation method come from Step 1.")
     st.code(json.dumps(profile, indent=2), language="json")
 
-    save_disabled = len(warnings) > 0 or not profile_name
-    if st.button("Save scoring profile", type="primary", disabled=save_disabled):
+    save_disabled = bool(warnings) or not profile_name or (name_taken and not overwrite_confirmed)
+    save_label = "Overwrite scoring profile" if name_taken else "Save scoring profile"
+    if st.button(save_label, type="primary", disabled=save_disabled):
         try:
             client.upsert_scoring_profile(profile_name, profile)
             st.success(f"Saved scoring profile '{profile_name}'.")

@@ -1,10 +1,11 @@
-﻿"""Resolve latest adjusted closes for tickers using the Yahoo Finance provider."""
+"""Resolve latest adjusted closes for tickers using the configured price provider."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
+from modules.infrastructure.market_data.providers.base import BasePriceProvider
 from modules.infrastructure.market_data.providers.yfinance_provider import YFinancePriceProvider
 
 
@@ -21,13 +22,16 @@ def fetch_latest_adjusted_closes(
     identifiers: list[str],
     *,
     lookback_calendar_days: int = 45,
-    provider: YFinancePriceProvider | None = None,
+    provider: BasePriceProvider | None = None,
 ) -> LatestAdjustedClosesResult:
     """
     Fetch the most recent non-null adjusted daily close for each identifier.
 
-    Uses a short historical window so the last row reflects the latest session
-    Yahoo returns for the range.
+    Uses a short historical window so the last row reflects the latest session the
+    provider returns for the range. Any :class:`BasePriceProvider` is accepted;
+    callers that pass the hybrid provider get manually uploaded prices in
+    preference to Yahoo Finance, matching backtest and IC behaviour. Defaults to
+    Yahoo Finance only when no provider is supplied.
     """
     prov = provider or YFinancePriceProvider()
     unique = list(dict.fromkeys(str(i or "").strip() for i in identifiers if str(i or "").strip()))

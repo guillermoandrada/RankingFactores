@@ -8,7 +8,11 @@ import logging
 import pandas as pd
 import yfinance as yf
 
-from modules.infrastructure.market_data.providers.base import BasePriceProvider, PriceMatrixResult
+from modules.infrastructure.market_data.providers.base import (
+    BasePriceProvider,
+    PriceMatrixResult,
+    to_period_end,
+)
 
 
 class YFinancePriceProvider(BasePriceProvider):
@@ -31,14 +35,13 @@ class YFinancePriceProvider(BasePriceProvider):
         end_date: str,
         frequency: str = "daily",
     ) -> PriceMatrixResult:
-        unique_identifiers = [
-            identifier
-            for identifier in dict.fromkeys(
+        unique_identifiers = list(
+            dict.fromkeys(
                 str(identifier or "").strip()
                 for identifier in identifiers
                 if str(identifier or "").strip()
             )
-        ]
+        )
         if not unique_identifiers:
             return PriceMatrixResult(prices=pd.DataFrame())
 
@@ -146,7 +149,10 @@ class YFinancePriceProvider(BasePriceProvider):
                 continue
 
             normalized = self._normalize_price_frame(
-                close_prices, start_date=start_date, end_date=end_date
+                close_prices,
+                start_date=start_date,
+                end_date=end_date,
+                frequency=frequency,
             )
             if not normalized.empty:
                 batch_frames.append(normalized)
@@ -194,6 +200,7 @@ class YFinancePriceProvider(BasePriceProvider):
                 close_prices[[candidate]],
                 start_date=start_date,
                 end_date=end_date,
+                frequency=frequency,
             )
             series = normalized.get(candidate)
             if series is None or series.dropna().empty:
@@ -225,7 +232,10 @@ class YFinancePriceProvider(BasePriceProvider):
                 return pd.DataFrame()
             return pd.DataFrame(close_frame)
 
-        close_column = "Close" if "Close" in raw.columns else "Adj Close" if "Adj Close" in raw.columns else None
+        close_column = next(
+            (name for name in ("Close", "Adj Close") if name in raw.columns),
+            None,
+        )
         if not close_column:
             return pd.DataFrame()
         ticker = tickers[0] if tickers else "UNKNOWN"
@@ -237,6 +247,7 @@ class YFinancePriceProvider(BasePriceProvider):
         *,
         start_date: str,
         end_date: str,
+        frequency: str = "daily",
     ) -> pd.DataFrame:
         normalized = frame.copy()
         normalized.index = pd.to_datetime(normalized.index).tz_localize(None).normalize()
@@ -246,7 +257,9 @@ class YFinancePriceProvider(BasePriceProvider):
         normalized = normalized[(normalized.index >= start) & (normalized.index <= end)]
         normalized = normalized.apply(pd.to_numeric, errors="coerce")
         normalized = normalized.dropna(axis=0, how="all").dropna(axis=1, how="all")
-        return normalized
+        # Yahoo labels monthly bars with the first day of the month; the rest of
+        # the application works in month-end terms.
+        return to_period_end(normalized, frequency)
 
     @staticmethod
     def _interval_from_frequency(frequency: str) -> str:

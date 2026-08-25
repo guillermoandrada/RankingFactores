@@ -29,6 +29,7 @@ from modules.domain.portfolio.models import (
     SecurityCandidate,
     TargetPosition,
 )
+from modules.shared.tickers import canonical_ticker
 
 
 CASH_TICKER = "CASH_USD"
@@ -193,7 +194,7 @@ class PortfolioService:
             [row.model_dump() for row in request.ethical_filter_rows]
         )
 
-        tickers = df_ranked[ticker_col].astype(str).str.strip().str.upper().tolist()
+        tickers = [canonical_ticker(value) for value in df_ranked[ticker_col].tolist()]
         scores = pd.to_numeric(df_ranked[score_col], errors="coerce").fillna(0.0).tolist()
         if name_col:
             names = df_ranked[name_col].astype(str).tolist()

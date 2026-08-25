@@ -9,7 +9,7 @@ from streamlit_app.ui import (
     get_api_client,
     render_page_header,
     render_section,
-    render_sidebar_api_test,
+    render_sidebar_api_status,
 )
 
 # Key prefix for Create tab to avoid collisions with other tabs
@@ -379,10 +379,14 @@ def _render_edit_metric_tab(client):
                 st.error(str(exc))
 
 
-render_page_header("Metrics", "Manage user-made derived metrics. Base metrics are only loaded when building formulas.")
+render_page_header(
+    "Metrics",
+    "Manage user-made derived metrics. Base metrics are only loaded when building formulas. "
+    "To load a variable from Excel, use Periods → Create.",
+)
 
-client = get_api_client("metrics")
-render_sidebar_api_test(client, "metrics_test_api")
+client = get_api_client()
+render_sidebar_api_status(client)
 
 st.divider()
 tabs = st.tabs(["Create", "Get & Edit", "Delete"])

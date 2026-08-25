@@ -18,9 +18,11 @@ from streamlit_app.ui.constraints import (
     targets_from_dataframe,
 )
 from streamlit_app.ui import (
+    current_period,
     get_api_client,
     render_page_header,
-    render_sidebar_api_test,
+    render_sidebar_api_status,
+    select_scoring_profile,
 )
 from streamlit_app.ui.reference_data import (
     load_reference_data_bundle,
@@ -224,16 +226,19 @@ def _render_backtest_result(backtest_result: dict[str, Any]) -> None:
         _render_component_returns(backtest_result.get("components", []))
 
 
-def _default_schedule_rows(available_periods: list[str]) -> list[dict[str, Any]]:
+def _new_schedule_row(available_periods: list[str]) -> dict[str, Any]:
+    """A one-year window on the workspace period, used for the first and every added row."""
     today = date.today()
-    return [
-        {
-            "id": str(uuid.uuid4()),
-            "period": available_periods[0] if available_periods else "",
-            "start_date": today - timedelta(days=365),
-            "end_date": today,
-        }
-    ]
+    return {
+        "id": str(uuid.uuid4()),
+        "period": current_period(available_periods),
+        "start_date": today - timedelta(days=365),
+        "end_date": today,
+    }
+
+
+def _default_schedule_rows(available_periods: list[str]) -> list[dict[str, Any]]:
+    return [_new_schedule_row(available_periods)]
 
 
 def _migrate_legacy_schedule_df_to_rows(available_periods: list[str]) -> None:
@@ -329,12 +334,7 @@ def _render_strategy_schedule_windows(available_periods: list[str]) -> None:
 
     if st.button("Add window", key="strategy_bt_sched_add"):
         st.session_state[STRATEGY_SCHEDULE_ROWS_KEY].append(
-            {
-                "id": str(uuid.uuid4()),
-                "period": available_periods[0] if available_periods else "",
-                "start_date": date.today() - timedelta(days=365),
-                "end_date": date.today(),
-            }
+            _new_schedule_row(available_periods)
         )
         st.rerun()
 
@@ -344,8 +344,8 @@ render_page_header(
     "Run a historical simulation by rebuilding the portfolio across manual period windows.",
 )
 
-client = get_api_client("strategy_backtest")
-render_sidebar_api_test(client, "strategy_backtest_api")
+client = get_api_client()
+render_sidebar_api_status(client)
 render_reference_refresh_button("strategy_backtest")
 
 try:
@@ -374,11 +374,7 @@ with st.container(border=True):
     st.markdown("**Shared portfolio inputs**")
     row1_col1, row1_col2, row1_col3 = st.columns(3)
     with row1_col1:
-        scoring_profile = st.selectbox(
-            "Scoring profile",
-            profile_names,
-            key="strategy_backtest_profile",
-        )
+        scoring_profile = select_scoring_profile(profile_names)
     with row1_col2:
         index_options = ["(All indices)"] + sorted(indices)
         index_label = st.selectbox("Index", index_options, key="strategy_backtest_index")

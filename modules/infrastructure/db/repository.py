@@ -63,6 +63,22 @@ class FinancialDatabase:
             )
         return {name: found[name] for name in metric_names}
 
+    def get_existing_tickers(self, tickers: list[str]) -> set[str]:
+        """
+        Return the subset of `tickers` that already have a row in `securities`.
+
+        Lets a caller import values for known securities only, without creating any.
+        """
+        unique = [ticker for ticker in dict.fromkeys(tickers) if ticker]
+        if not unique:
+            return set()
+        tbl = self._get_table("securities")
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(tbl.c.ticker).where(tbl.c.ticker.in_(unique))
+            ).fetchall()
+        return {row[0] for row in rows}
+
     def list_periods(self) -> list[str]:
         """Return all distinct periods in fundamental_values."""
         tbl = self._get_table("fundamental_values")

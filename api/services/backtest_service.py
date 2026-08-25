@@ -15,7 +15,8 @@ from modules.domain.backtesting import (
     join_benchmark_series,
     serialize_series,
 )
-from modules.infrastructure.market_data import BasePriceProvider
+from modules.infrastructure.market_data import BasePriceProvider, PriceMatrixResult
+from modules.shared.tickers import canonical_ticker
 from api.services.portfolio_service import PortfolioService
 
 
@@ -143,6 +144,12 @@ class BacktestService:
         if price_result.missing_identifiers:
             warnings.append(
                 "Missing price data for: " + ", ".join(sorted(price_result.missing_identifiers))
+            )
+        if price_result.partial_coverage:
+            warnings.append(
+                "Price history does not span the full window for: "
+                + ", ".join(sorted(price_result.partial_coverage))
+                + ". Returns for these positions are held flat outside the covered dates."
             )
 
         aligned_prices, active_weights, dropped_tickers = self._prepare_backtest_inputs(
@@ -290,13 +297,8 @@ class BacktestService:
         return pd.date_range(start=start_date, end=end_date, freq=freq)
 
     @staticmethod
-    def _empty_price_result():
-        class _EmptyResult:
-            prices = pd.DataFrame()
-            resolved_identifiers: dict[str, str] = {}
-            missing_identifiers: list[str] = []
-
-        return _EmptyResult()
+    def _empty_price_result() -> PriceMatrixResult:
+        return PriceMatrixResult(prices=pd.DataFrame())
 
     @staticmethod
     def _stitch_frames(frames: list[pd.DataFrame]) -> pd.DataFrame:
@@ -316,9 +318,9 @@ class BacktestService:
         dropped_tickers: list[str],
     ) -> list[dict[str, Any]]:
         row_by_ticker = {
-            str(row.get("ticker") or "").strip().upper(): row
+            canonical_ticker(row.get("ticker")): row
             for row in portfolio_rows
-            if str(row.get("ticker") or "").strip()
+            if canonical_ticker(row.get("ticker"))
         }
         dropped = set(dropped_tickers)
         components: list[dict[str, Any]] = []

@@ -10,13 +10,13 @@ from streamlit_app.components.profile_editor.tree_nav import render_tree_nav
 from streamlit_app.components.profile_editor.node_editor import render_node_editor
 from streamlit_app.components.profile_editor.previews import render_previews
 from streamlit_app.components.profile_editor.validators import validate_nodes
-from streamlit_app.ui import get_api_client, render_page_header, render_sidebar_api_test
+from streamlit_app.ui import get_api_client, render_page_header, render_sidebar_api_status
 from streamlit_app.components.wizard.tree_editor import _make_add_metric_dialog, _make_add_subfactor_dialog
 
 render_page_header("Scoring Profiles", "Tree navigator + node editor. Select a node to edit.")
 
-client = get_api_client("scoring_profiles")
-render_sidebar_api_test(client, "scoring_profiles_test")
+client = get_api_client()
+render_sidebar_api_status(client)
 
 try:
     profiles = client.list_scoring_profiles()
@@ -36,6 +36,10 @@ if not profile_names:
     st.info("No scoring profiles found. Create one via the Scoring Profile Wizard.")
     st.stop()
 
+flash_message = st.session_state.pop("scoring_profiles_flash", None)
+if flash_message:
+    st.success(flash_message)
+
 st.divider()
 selector_col, reload_col = st.columns([3, 1])
 with selector_col:
@@ -46,13 +50,16 @@ with selector_col:
     )
 with reload_col:
     if st.button("Reload from API", key="reload_profile"):
-        profile_data = client.get_scoring_profile(selected_profile)
-        store = ProfileStore()
-        store.load_from_profile(profile_data)
-        store_key = f"profile_editor_store_{selected_profile}"
-        st.session_state[store_key] = store
-        st.session_state.pop("profile_editor_selected_node_id", None)
-        st.rerun()
+        try:
+            profile_data = client.get_scoring_profile(selected_profile)
+        except ApiError as exc:
+            st.error(f"Could not reload '{selected_profile}': {exc}")
+        else:
+            store = ProfileStore()
+            store.load_from_profile(profile_data)
+            st.session_state[f"profile_editor_store_{selected_profile}"] = store
+            st.session_state.pop("profile_editor_selected_node_id", None)
+            st.rerun()
 
 if not selected_profile:
     st.stop()
@@ -130,6 +137,35 @@ if confirm_del:
     with c2:
         if st.button("Cancel"):
             st.session_state.pop(f"{key_prefix}_confirm_delete", None)
+            st.rerun()
+    st.stop()
+
+confirm_delete_profile = st.session_state.get(f"{key_prefix}_confirm_delete_profile")
+if confirm_delete_profile:
+    st.warning(
+        f"Delete the entire scoring profile '{confirm_delete_profile}', including every node "
+        "in its tree? This cannot be undone."
+    )
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Confirm delete profile", type="primary"):
+            try:
+                client.delete_scoring_profile(confirm_delete_profile)
+            except ApiError as exc:
+                st.error(str(exc))
+            else:
+                st.session_state.pop(f"{key_prefix}_confirm_delete_profile", None)
+                st.session_state.pop(f"profile_editor_store_{confirm_delete_profile}", None)
+                # The selector still holds the deleted name, which is no longer an option.
+                st.session_state.pop("scoring_profile_select", None)
+                st.session_state.pop("profile_editor_selected_node_id", None)
+                st.session_state["scoring_profiles_flash"] = (
+                    f"Deleted scoring profile '{confirm_delete_profile}'."
+                )
+                st.rerun()
+    with c2:
+        if st.button("Cancel profile delete"):
+            st.session_state.pop(f"{key_prefix}_confirm_delete_profile", None)
             st.rerun()
     st.stop()
 
@@ -290,11 +326,6 @@ with c1:
             st.error(str(exc))
 with c2:
     if st.button("Delete profile", key="del_profile_btn"):
-        try:
-            client.delete_scoring_profile(selected_profile)
-            st.success(f"Deleted '{selected_profile}'.")
-            st.session_state.pop(store_key, None)
-            st.rerun()
-        except ApiError as exc:
-            st.error(str(exc))
-    st.caption("Deleting cannot be undone.")
+        st.session_state[f"{key_prefix}_confirm_delete_profile"] = selected_profile
+        st.rerun()
+    st.caption("Asks for confirmation. Deleting cannot be undone.")

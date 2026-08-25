@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from modules.infrastructure.ingestion.readers.base import BaseFileReader
+from modules.shared.tickers import ticker_from_ric
 
 # Minimum file columns: any RIC alias + score. Others are optional (filled with empty/NaN).
 _RIC_HEADER_ALIASES = (
@@ -80,7 +81,7 @@ class ReutersMetricsFileReader(BaseFileReader):
 
         normalized = pd.DataFrame(
             {
-                "Ticker": df[column_map["ric"]].map(self._extract_ticker),
+                "Ticker": df[column_map["ric"]].map(ticker_from_ric),
                 "Long Name": long_name,
                 "GICS Sector Name": sector,
                 "GICS Industry Group Name": industry,
@@ -136,9 +137,3 @@ class ReutersMetricsFileReader(BaseFileReader):
             if normalized in normalized_columns:
                 mapping[key] = normalized_columns[normalized]
         return mapping
-
-    def _extract_ticker(self, value: object) -> str | None:
-        raw = str(value or "").strip()
-        if not raw:
-            return None
-        return raw.split(".", 1)[0].strip() or None

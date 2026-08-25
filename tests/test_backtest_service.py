@@ -126,3 +126,34 @@ def test_backtest_service_strategy_stitches_period_windows() -> None:
     assert result["intervals"][1]["components"][0]["ticker"] == "BBB"
     assert result["summary"]["ending_value"] is not None
     assert len(result["series"]) == 3
+
+
+def test_backtest_service_warns_about_partial_price_coverage() -> None:
+    """A position priced for only part of the window must not look complete."""
+
+    class PartiallyCoveredProvider(FakePriceProvider):
+        def fetch_price_matrix(self, identifiers, *, start_date, end_date, frequency="daily"):
+            result = super().fetch_price_matrix(
+                identifiers,
+                start_date=start_date,
+                end_date=end_date,
+                frequency=frequency,
+            )
+            result.partial_coverage = [i for i in identifiers if i == "AAA"]
+            return result
+
+    service = BacktestService(
+        portfolio_service=FakePortfolioService(),
+        price_provider=PartiallyCoveredProvider(),
+    )
+    request = PortfolioBacktestBody(
+        portfolio=[{"ticker": "AAA", "target_weight": 1.0}],
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 1, 3),
+        capital_base=100.0,
+    )
+
+    result = service.backtest_portfolio(request)
+
+    assert any("does not span the full window" in warning for warning in result["warnings"])
+    assert any("AAA" in warning for warning in result["warnings"])

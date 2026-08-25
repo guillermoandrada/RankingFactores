@@ -7,6 +7,7 @@ from typing import Iterable
 import pandas as pd
 
 from modules.domain.backtesting.models import PortfolioWeight
+from modules.shared.tickers import canonical_ticker
 
 
 CASH_TICKER = "CASH_USD"
@@ -17,7 +18,7 @@ def extract_weights(rows: Iterable[dict]) -> list[PortfolioWeight]:
     """Convert API payload rows into normalized portfolio weights."""
     weights: list[PortfolioWeight] = []
     for row in rows:
-        ticker = str(row.get("ticker") or "").strip().upper()
+        ticker = canonical_ticker(row.get("ticker"))
         if not ticker:
             continue
         try:

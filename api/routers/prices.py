@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 
 from api.dependencies import get_price_service
 from api.services.price_service import PriceService
@@ -25,6 +25,18 @@ async def upload_price_file(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get("/latest")
+async def get_latest_closes(
+    tickers: str = Query(..., description="Comma-separated tickers."),
+    service: PriceService = Depends(get_price_service),
+):
+    """Return the latest adjusted close per ticker, cached prices taking priority."""
+    requested = [item.strip() for item in tickers.split(",") if item.strip()]
+    if not requested:
+        raise HTTPException(status_code=400, detail="Provide at least one ticker.")
+    return service.get_latest_closes(requested)
+
+
 @router.get("/tickers")
 async def list_cached_tickers(
     service: PriceService = Depends(get_price_service),
@@ -41,4 +53,7 @@ async def delete_cached_tickers(
     """Delete cached price data for specific tickers (JSON body: list of ticker strings)."""
     if not tickers:
         raise HTTPException(status_code=400, detail="Provide at least one ticker.")
-    return service.delete_tickers(tickers)
+    try:
+        return service.delete_tickers(tickers)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

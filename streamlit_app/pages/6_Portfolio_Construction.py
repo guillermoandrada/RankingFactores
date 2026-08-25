@@ -10,7 +10,6 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from modules.infrastructure.market_data import fetch_latest_adjusted_closes
 from modules.domain.portfolio import parse_ethical_filter_excel, parse_holdings_excel
 from modules.domain.portfolio.input_parsers import normalize_ticker
 from streamlit_app.client.api_client import ApiError
@@ -22,7 +21,9 @@ from streamlit_app.ui.constraints import (
 from streamlit_app.ui import (
     get_api_client,
     render_page_header,
-    render_sidebar_api_test,
+    render_sidebar_api_status,
+    select_period,
+    select_scoring_profile,
 )
 from streamlit_app.ui.reference_data import (
     load_reference_data_bundle,
@@ -46,11 +47,11 @@ def _positions_to_rows(positions) -> list[dict[str, Any]]:
     return rows
 
 
-def _merge_yfinance_prices_into_holdings_rows(
+def _merge_latest_prices_into_holdings_rows(
     rows: list[dict[str, Any]],
     closes: dict[str, float],
 ) -> list[dict[str, Any]]:
-    """Apply Yahoo Finance closes; skip cash rows; recompute market_value as quantity * price."""
+    """Apply the latest closes; skip cash rows; recompute market_value as quantity * price."""
     merged: list[dict[str, Any]] = []
     for row in rows:
         ticker_key = normalize_ticker(row.get("ticker"))
@@ -274,8 +275,8 @@ render_page_header(
     "Build fresh portfolios or rebalance an existing portfolio using scoring output.",
 )
 
-client = get_api_client("portfolio")
-render_sidebar_api_test(client, "portfolio_test_api")
+client = get_api_client()
+render_sidebar_api_status(client)
 render_reference_refresh_button("portfolio")
 
 try:
@@ -304,13 +305,9 @@ with st.container(border=True):
     st.markdown("**Portfolio inputs**")
     row1_col1, row1_col2, row1_col3 = st.columns(3)
     with row1_col1:
-        period = st.selectbox("Period", periods, key="portfolio_period")
+        period = select_period(periods)
     with row1_col2:
-        scoring_profile = st.selectbox(
-            "Scoring profile",
-            profile_names,
-            key="portfolio_profile",
-        )
+        scoring_profile = select_scoring_profile(profile_names)
     with row1_col3:
         index_options = ["(All indices)"] + sorted(indices)
         index_label = st.selectbox("Index", index_options, key="portfolio_index")
@@ -380,10 +377,13 @@ if construction_mode == "rebalance_existing":
 
                 fetch_disabled = not holdings_rows
                 if st.button(
-                    "Fetch latest prices (Yahoo Finance)",
+                    "Fetch latest prices",
                     key="portfolio_fetch_yf_prices",
                     disabled=fetch_disabled,
-                    help="Loads the latest adjusted closes from Yahoo Finance and fills price and market value.",
+                    help=(
+                        "Loads the latest adjusted closes and fills price and market value. "
+                        "Uploaded Bloomberg prices take priority over Yahoo Finance."
+                    ),
                 ):
                     tickers = [
                         normalize_ticker(row.get("ticker"))
@@ -394,20 +394,18 @@ if construction_mode == "rebalance_existing":
                         st.warning("No equity tickers to price (only cash or empty rows).")
                     else:
                         try:
-                            price_result = fetch_latest_adjusted_closes(tickers)
-                            updated = _merge_yfinance_prices_into_holdings_rows(
+                            price_result = client.get_latest_prices(tickers)
+                            updated = _merge_latest_prices_into_holdings_rows(
                                 holdings_rows,
-                                price_result.closes,
+                                price_result.get("closes", {}),
                             )
                             st.session_state[_PORTFOLIO_HOLDINGS_CACHE_KEY] = updated
                             holdings_rows = updated
-                            if price_result.missing_identifiers:
-                                st.warning(
-                                    "No Yahoo Finance close for: "
-                                    + ", ".join(sorted(price_result.missing_identifiers))
-                                )
+                            missing = price_result.get("missing_identifiers", [])
+                            if missing:
+                                st.warning("No close price found for: " + ", ".join(sorted(missing)))
                             st.rerun()
-                        except Exception as exc:
+                        except (ApiError, ValueError) as exc:
                             st.error(f"Could not fetch prices: {exc}")
 
                 equity_holdings = [

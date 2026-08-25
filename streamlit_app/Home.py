@@ -5,7 +5,12 @@ from __future__ import annotations
 import streamlit as st
 
 from streamlit_app.client.api_client import ApiError
-from streamlit_app.ui import get_api_client, inject_custom_css, render_page_header
+from streamlit_app.ui import (
+    get_api_client,
+    inject_custom_css,
+    render_page_header,
+    render_sidebar_api_status,
+)
 
 st.set_page_config(page_title="RankingFactores", layout="wide")
 inject_custom_css()
@@ -14,7 +19,8 @@ inject_custom_css()
 def _home() -> None:
     render_page_header("RankingFactores", "Financial data ranking and scoring profile builder.")
 
-    client = get_api_client("home")
+    client = get_api_client()
+    render_sidebar_api_status(client)
 
     try:
         stats = client.get_stats()

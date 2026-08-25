@@ -41,6 +41,24 @@ def _build_minimal_reuters_excel_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def test_reuters_reader_drops_a_row_without_an_identifier(tmp_path) -> None:
+    """A blank identifier must not import as a security literally named 'nan'."""
+    file_path = tmp_path / "reuters_blank.xlsx"
+    buffer = BytesIO()
+    pd.DataFrame(
+        {
+            "Identifier": ["VIK.N", None],
+            "Earnings Quality Country Rank, Current": [60, 92],
+        }
+    ).to_excel(buffer, index=False)
+    file_path.write_bytes(buffer.getvalue())
+
+    result = ReutersMetricsFileReader().read(str(file_path))
+
+    assert result["Ticker"].tolist()[:1] == ["VIK"]
+    assert result["Ticker"].isna().sum() == 1
+
+
 def test_reuters_reader_accepts_minimal_identifier_and_score_columns(tmp_path) -> None:
     file_path = tmp_path / "reuters_min.xlsx"
     file_path.write_bytes(_build_minimal_reuters_excel_bytes())
