@@ -1,10 +1,10 @@
-"""DB metrics router: upload variable values, update higher_is_better and N/A treatment."""
+﻿"""DB metrics router: upload variable values, update higher_is_better and N/A treatment."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
-from api.dependencies import get_db, get_db_metric_service
+from api.dependencies import get_db, get_db_metric_service, invalidate_fundamentals_caches
 from api.schemas.metrics import MetricUpdateRequest
 from api.services.db_metric_service import DbMetricService
 
@@ -30,7 +30,9 @@ async def create_db_metric_from_file(
         raise HTTPException(status_code=400, detail="File must be .xlsx or .xls.")
     content = await file.read()
     try:
-        return service.ingest_variable_file(content, file.filename, sheet_name=sheet)
+        result = service.ingest_variable_file(content, file.filename, sheet_name=sheet)
+        invalidate_fundamentals_caches()
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

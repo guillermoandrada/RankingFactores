@@ -26,7 +26,17 @@ def _read_timeout(client: httpx.Client) -> float:
 
 
 class ApiError(RuntimeError):
-    pass
+    """
+    Any API failure, transport or HTTP.
+
+    `status_code` is the HTTP status when the server answered, and None when the request
+    never got a response. Callers use it to react to specific outcomes, such as the 409
+    a duplicate derived metric returns.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class RankingApiClient:
@@ -64,9 +74,14 @@ class RankingApiClient:
         if response.status_code >= 400:
             try:
                 detail = response.json()
+                if isinstance(detail, dict) and "detail" in detail:
+                    detail = detail["detail"]
             except Exception:
                 detail = response.text
-            raise ApiError(f"{method} {path} failed: {response.status_code} {detail}")
+            raise ApiError(
+                f"{method} {path} failed: {response.status_code} {detail}",
+                status_code=response.status_code,
+            )
 
         if response.status_code == 204:
             return {}
@@ -111,6 +126,34 @@ class RankingApiClient:
         return self._request(
             "POST",
             "/periods",
+            params=params,
+            files={"file": (filename, file_content)},
+            long=True,
+        )
+
+    def preview_period_file(
+        self,
+        file_content: bytes,
+        filename: str,
+        *,
+        reader: str = "bloomberg",
+        if_period_exists: str = "replace",
+        period: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Describe what create_period would do with this file, without importing it.
+
+        Uses the long timeout: previewing parses the whole workbook, like an import does.
+        """
+        params: dict[str, Any] = {
+            "reader": reader,
+            "if_period_exists": if_period_exists,
+        }
+        if period:
+            params["period"] = period
+        return self._request(
+            "POST",
+            "/periods/preview",
             params=params,
             files={"file": (filename, file_content)},
             long=True,
@@ -193,6 +236,27 @@ class RankingApiClient:
         if na_handling is not None:
             body["na_handling"] = na_handling
         return self._request("PUT", f"/metrics/{quote(metric_name, safe='')}", json=body)
+
+    def preview_derived_metric(
+        self,
+        *,
+        period: str,
+        metric_names: list[str],
+        operations: list[str],
+        metric_name: str | None = None,
+        na_handling: str | None = None,
+    ) -> dict[str, Any]:
+        """Compute a candidate derived metric on one period without saving it."""
+        body: dict[str, Any] = {
+            "period": period,
+            "metric_names": metric_names,
+            "operations": operations,
+        }
+        if metric_name:
+            body["metric_name"] = metric_name
+        if na_handling:
+            body["na_handling"] = na_handling
+        return self._request("POST", "/metrics/preview", json=body, long=True)
 
     def delete_derived_metric(self, metric_name: str) -> dict[str, Any]:
         return self._request("DELETE", f"/metrics/{quote(metric_name, safe='')}")

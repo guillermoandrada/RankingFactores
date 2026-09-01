@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
 from typing import Any
 
 import pandas as pd
@@ -23,6 +25,13 @@ _READER_LABELS = {
     "reuters_metrics": "Reuters Metrics",
     _VARIABLE_READER: "Bloomberg Individual Variable",
 }
+
+# Columns the editor shows but never saves, and the internal key it should not show at all.
+_LOCKED_EDITOR_COLUMNS = ("ticker", "name", "sector", "industry")
+_HIDDEN_EDITOR_COLUMNS = ("security_id",)
+
+_REMOVE_SECURITY_STATE_KEY = "period_pending_remove_security"
+_REMOVE_METRIC_STATE_KEY = "period_pending_remove_metric"
 
 
 def _render_variable_upload_result(result: dict) -> None:
@@ -61,6 +70,72 @@ def _render_variable_upload_result(result: dict) -> None:
     rows_skipped = result.get("rows_skipped", 0)
     if rows_skipped:
         st.info(f"{rows_skipped:,} row(s) skipped for a missing ticker.")
+
+
+_ACTION_NOTICES = {
+    "create": ("success", "Creates a new period **{period}**."),
+    "replace": (
+        "warning",
+        "Period **{period}** already exists. Importing **replaces** it: every existing "
+        "value in that period is overwritten.",
+    ),
+    "append": (
+        "info",
+        "Period **{period}** already exists. Importing **merges** the file into it, "
+        "keeping metrics and securities that the file does not mention.",
+    ),
+}
+
+
+def _render_upload_preview(preview: dict) -> None:
+    """Show what an import would do, so a replace is never a surprise."""
+    period = preview.get("period")
+    if not period:
+        st.error(
+            preview.get("period_error")
+            or "No period could be determined from this file. Enter one manually if the "
+            "reader supports it."
+        )
+    else:
+        level, template = _ACTION_NOTICES.get(preview.get("action", "create"), _ACTION_NOTICES["create"])
+        getattr(st, level)(template.format(period=period))
+        if preview.get("period_source") == "manual":
+            st.caption("Period taken from the field above, not from the file.")
+
+    summary_columns = st.columns(4)
+    summary_columns[0].metric("Rows", f"{preview.get('row_count', 0):,}")
+    summary_columns[1].metric("Columns", preview.get("column_count", 0))
+    summary_columns[2].metric("Index code", preview.get("index_code") or "—")
+    summary_columns[3].metric("Reader", preview.get("reader", ""))
+
+    if preview.get("missing_ticker_column"):
+        st.error(
+            "No **Ticker** column was found. The import will fail — check the reader "
+            "matches this file."
+        )
+
+    sheet_names = preview.get("sheet_names") or []
+    if sheet_names:
+        st.caption(f"Sheets in the workbook: {_truncated_list([str(s) for s in sheet_names])}")
+
+    sample_rows = preview.get("sample_rows") or []
+    if sample_rows:
+        st.caption("First rows as the reader parses them:")
+        st.dataframe(pd.DataFrame(sample_rows), width="stretch", hide_index=True)
+
+
+def _render_workbook_sheets(file_bytes: bytes) -> list[str]:
+    """
+    List the workbook's sheets locally.
+
+    Sheet names are a property of the file, not of any reader, so reading them here
+    duplicates no ingestion logic.
+    """
+    try:
+        with pd.ExcelFile(io.BytesIO(file_bytes)) as workbook:
+            return [str(name) for name in workbook.sheet_names]
+    except (ValueError, OSError):
+        return []
 
 
 def _truncated_list(values: list[str], limit: int = 40) -> str:
@@ -131,8 +206,145 @@ def _collect_period_edits(
     return updates, cleared, invalid
 
 
+def _metric_coverage(df: pd.DataFrame, metric_names: list[str]) -> pd.DataFrame:
+    """Present/missing counts per metric, so the N/A settings below have context."""
+    total = len(df)
+    rows = []
+    for metric_name in metric_names:
+        if metric_name not in df.columns:
+            continue
+        missing = int(df[metric_name].isna().sum())
+        rows.append(
+            {
+                "Metric": metric_name,
+                "Present": total - missing,
+                "Missing": missing,
+                "% Missing": (missing / total * 100.0) if total else 0.0,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _filter_period_rows(
+    df: pd.DataFrame,
+    *,
+    search: str,
+    sector: str,
+    only_missing: bool,
+    metric_names: list[str],
+) -> pd.DataFrame:
+    """Narrow a 500-row period down to the securities the user is actually working on."""
+    filtered = df
+    text = search.strip().lower()
+    if text:
+        searchable = [column for column in ("ticker", "name") if column in filtered.columns]
+        if searchable:
+            matches = pd.Series(False, index=filtered.index)
+            for column in searchable:
+                matches |= (
+                    filtered[column]
+                    .astype("string")
+                    .str.lower()
+                    # regex=False: a ticker like "BRK.B" or a stray "(" must stay literal.
+                    .str.contains(text, na=False, regex=False)
+                )
+            filtered = filtered[matches]
+    if sector and "sector" in filtered.columns:
+        filtered = filtered[filtered["sector"] == sector]
+    if only_missing:
+        present_metrics = [name for name in metric_names if name in filtered.columns]
+        if present_metrics:
+            filtered = filtered[filtered[present_metrics].isna().any(axis=1)]
+    return filtered
+
+
+def _editor_key_suffix(period_name: str, search: str, sector: str, only_missing: bool) -> str:
+    """
+    Give the editor a new identity whenever the visible rows change.
+
+    st.data_editor tracks pending edits by row position, so reusing one key across two
+    different filters would replay an edit onto whichever row now sits at that position.
+    """
+    raw = f"{period_name}|{search.strip().lower()}|{sector}|{int(only_missing)}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+
+
+@st.cache_data(show_spinner=False)
+def _period_export_bytes(df: pd.DataFrame) -> bytes:
+    """Single-sheet xlsx of the rows currently on screen."""
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Period")
+    return buffer.getvalue()
+
+
+def _refresh_period_content(client, period_name: str) -> None:
+    """
+    Reload the table after an edit so the outcome is visible straight away.
+
+    Dropping the cached content instead would blank the table and hide the report until
+    the user pressed Load content again.
+    """
+    try:
+        st.session_state["period_content"] = client.get_period_content(period_name)
+    except ApiError:
+        st.session_state.pop("period_content", None)
+
+
+def _period_editor_column_config(columns: list[str]) -> dict[str, Any]:
+    """
+    Make the grid say what it does: only metric columns are writable.
+
+    Identity columns are locked because the save path never sends them, and the internal
+    security_id is hidden entirely.
+    """
+    config: dict[str, Any] = {
+        column: None for column in _HIDDEN_EDITOR_COLUMNS if column in columns
+    }
+    for column in _LOCKED_EDITOR_COLUMNS:
+        if column in columns:
+            config[column] = st.column_config.Column(
+                column,
+                disabled=True,
+                pinned=column == "ticker",
+                help="Read-only. Only metric values can be edited here.",
+            )
+    return config
+
+
+def _confirm_pending_action(
+    state_key: str,
+    prompt: str,
+    confirm_label: str,
+    key_prefix: str,
+) -> bool:
+    """
+    Render the confirm/cancel pair for a pending destructive action.
+
+    Returns True only when the user confirms. Cancelling clears the pending action and
+    reruns, so the caller never sees it again.
+    """
+    st.warning(prompt)
+    confirm_col, cancel_col = st.columns(2)
+    with confirm_col:
+        confirmed = st.button(confirm_label, type="primary", key=f"{key_prefix}_confirm")
+    with cancel_col:
+        if st.button("Cancel", key=f"{key_prefix}_cancel"):
+            st.session_state.pop(state_key, None)
+            st.rerun()
+    return confirmed
+
+
 def _render_save_report(report: dict) -> None:
-    """Report the outcome of the last save, including edits the API could not accept."""
+    """
+    Report the outcome of the last edit to this period.
+
+    Covers saves, including the edits the API could not accept, and removals, which
+    survive the rerun that reloads the table.
+    """
+    removed = report.get("removed")
+    if removed:
+        st.success(removed)
     saved = report.get("saved", 0)
     if saved:
         st.success(f"Updated {saved} values.")
@@ -154,6 +366,15 @@ render_page_header("Periods", "Create periods from Excel/CSV, view and edit cont
 
 client = get_api_client()
 render_sidebar_api_status(client)
+
+# Fetched once and shared: Streamlit renders every tab on each run, so fetching inside
+# each tab issued the same request three times.
+try:
+    periods = client.list_periods()
+    periods_error = ""
+except ApiError as exc:
+    periods = []
+    periods_error = f"Cannot load periods: {exc}"
 
 st.divider()
 tabs = st.tabs(["Create", "View & Edit", "Delete"])
@@ -200,10 +421,9 @@ with tabs[0]:
             ),
         )
 
-        try:
-            existing_periods_for_append = client.list_periods()
-        except ApiError as exc:
-            st.warning(f"Could not load existing periods: {exc}")
+        existing_periods_for_append = periods
+        if periods_error:
+            st.warning(periods_error)
 
         if import_mode == "append_existing":
             upload_behavior = "append"
@@ -274,6 +494,43 @@ with tabs[0]:
             key="period_if_exists",
             help="replace = overwrite; append = merge new metrics/securities",
         )
+    if file and reader == _VARIABLE_READER:
+        workbook_sheets = _render_workbook_sheets(file.getvalue())
+        if workbook_sheets:
+            target_sheet = sheet_name.strip() or workbook_sheets[0]
+            st.info(
+                f"Sheets in this workbook: {_truncated_list(workbook_sheets)}. "
+                f"Reading **{target_sheet}**, so the metric will be named **{target_sheet}**."
+            )
+
+    if file and reader != _VARIABLE_READER:
+        preview_col, clear_col = st.columns([1, 3])
+        with preview_col:
+            if st.button("Preview import", key="period_preview_btn"):
+                try:
+                    with st.spinner("Parsing the file…"):
+                        st.session_state["period_preview"] = client.preview_period_file(
+                            file.getvalue(),
+                            file.name,
+                            reader=reader,
+                            if_period_exists=upload_behavior,
+                            period=target_period,
+                        )
+                except ApiError as exc:
+                    st.session_state.pop("period_preview", None)
+                    st.error(str(exc))
+        with clear_col:
+            if st.session_state.get("period_preview") and st.button(
+                "Clear preview", key="period_preview_clear_btn"
+            ):
+                st.session_state.pop("period_preview", None)
+                st.rerun()
+
+        preview = st.session_state.get("period_preview")
+        if preview:
+            with st.container(border=True):
+                _render_upload_preview(preview)
+
     button_label = "Upload variable" if reader == _VARIABLE_READER else "Create period"
     if st.button(button_label, type="primary", key="period_create_btn"):
         if not file:
@@ -303,12 +560,20 @@ with tabs[0]:
                     reader=reader,
                     period=target_period,
                 )
+                action_verbs = {
+                    "create": "created",
+                    "replace": "replaced (previous contents overwritten)",
+                    "append": "merged into the existing period",
+                }
+                action = result.get("action", "create")
                 st.session_state["period_upload_success"] = (
-                    f"Period '{result.get('period', '')}' uploaded successfully. "
+                    f"Period '{result.get('period', '')}' "
+                    f"{action_verbs.get(action, 'uploaded')}. "
                     f"Companies: {result.get('companies_count', 0)}, "
                     f"Metrics: {result.get('metrics_count', 0)}, "
                     f"Records: {result.get('records_count', 0)}."
                 )
+                st.session_state.pop("period_preview", None)
                 st.rerun()
             except ApiError as exc:
                 st.error(str(exc))
@@ -316,11 +581,8 @@ with tabs[0]:
 # --- View & Edit tab (merged Get + Edit) ---
 with tabs[1]:
     render_section("View & Edit period", "Load a period, edit values in the table, then save. Or remove a security or metric from the period.")
-    try:
-        periods = client.list_periods()
-    except ApiError as exc:
-        st.error(f"Cannot load periods: {exc}")
-        periods = []
+    if periods_error:
+        st.error(periods_error)
 
     if not periods:
         st.info("No periods. Upload a file via the Create tab.")
@@ -341,6 +603,10 @@ with tabs[1]:
 
         content = st.session_state.get("period_content")
         period_name = st.session_state.get("period_name", selected)
+
+        save_report = st.session_state.pop("period_save_report", None)
+        if save_report:
+            _render_save_report(save_report)
 
         if content and content.get("data") and period_name == selected:
             df = pd.DataFrame(content["data"])
@@ -364,17 +630,90 @@ with tabs[1]:
                     "metric parameters are unavailable until the API responds."
                 )
 
-            save_report = st.session_state.pop("period_save_report", None)
-            if save_report:
-                _render_save_report(save_report)
-
-            st.markdown("**Edit values in the table, then click Save changes.**")
-            edited_df = st.data_editor(
-                df,
-                width="stretch",
-                key="period_data_editor",
-                num_rows="fixed",
+            st.markdown("**Edit metric values in the table, then click Save changes.**")
+            st.caption(
+                "Ticker, name, sector and industry are read-only: this page saves metric "
+                "values only. Use the commands below to remove a security or a metric."
             )
+
+            coverage_df = _metric_coverage(df, metrics)
+            if not coverage_df.empty:
+                total_missing = int(coverage_df["Missing"].sum())
+                with st.expander(
+                    f"Metric coverage — {total_missing:,} missing value(s) across {len(df):,} securities",
+                    expanded=False,
+                ):
+                    st.dataframe(
+                        coverage_df,
+                        width="stretch",
+                        hide_index=True,
+                        column_config={
+                            "% Missing": st.column_config.NumberColumn("% Missing", format="%.1f%%")
+                        },
+                    )
+
+            filter_search_col, filter_sector_col, filter_missing_col = st.columns([3, 2, 2])
+            with filter_search_col:
+                row_search = st.text_input(
+                    "Search ticker or name",
+                    key="period_row_search",
+                    placeholder="e.g. AAPL or Apple",
+                )
+            with filter_sector_col:
+                sector_values = (
+                    sorted(df["sector"].dropna().unique().tolist())
+                    if "sector" in df.columns
+                    else []
+                )
+                sector_label = st.selectbox(
+                    "Sector",
+                    options=["(All sectors)"] + sector_values,
+                    key="period_row_sector",
+                )
+                sector_choice = "" if sector_label == "(All sectors)" else sector_label
+            with filter_missing_col:
+                only_missing = st.checkbox(
+                    "Only rows with missing values",
+                    key="period_row_only_missing",
+                    help="Show securities where at least one metric in this period is empty.",
+                )
+
+            view_df = _filter_period_rows(
+                df,
+                search=row_search,
+                sector=sector_choice,
+                only_missing=only_missing,
+                metric_names=metrics,
+            )
+            filtered = len(view_df) != len(df)
+            if filtered:
+                st.caption(
+                    f"Showing {len(view_df):,} of {len(df):,} securities. "
+                    "Changing a filter discards unsaved edits."
+                )
+
+            if view_df.empty:
+                st.info("No rows match the current filters. Clear them to edit values.")
+                edited_df = view_df
+            else:
+                edited_df = st.data_editor(
+                    view_df,
+                    width="stretch",
+                    key=(
+                        "period_data_editor_"
+                        + _editor_key_suffix(period_name, row_search, sector_choice, only_missing)
+                    ),
+                    num_rows="fixed",
+                    column_config=_period_editor_column_config(list(view_df.columns)),
+                )
+                st.download_button(
+                    f"Export {len(view_df):,} row(s) to Excel",
+                    data=_period_export_bytes(view_df),
+                    file_name=f"Period_{period_name.replace('/', '-').replace(' ', '')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="period_export_xlsx",
+                    help="Exports exactly the rows shown above, filters included.",
+                )
 
             st.divider()
             st.markdown("**Commands**")
@@ -395,59 +734,130 @@ with tabs[1]:
                                 "cleared": cleared,
                                 "invalid": invalid,
                             }
-                            st.session_state.pop("period_content", None)
+                            _refresh_period_content(client, period_name)
                             st.rerun()
                         except ApiError as exc:
                             st.error(str(exc))
 
             with c2:
-                st.caption("Remove a security from this period")
-                tickers = df["ticker"].dropna().unique().tolist()
-                sec_to_remove = st.selectbox(
-                    "Security",
-                    options=["— Select —"] + sorted(tickers),
+                st.caption("Remove securities from this period")
+                tickers = sorted(df["ticker"].dropna().unique().tolist())
+                securities_to_remove = st.multiselect(
+                    "Securities",
+                    options=tickers,
                     key="period_remove_sec_select",
                     label_visibility="collapsed",
+                    placeholder="Select securities",
                 )
-                if sec_to_remove != "— Select —" and st.button("Remove security", key="period_remove_sec_btn"):
-                    try:
-                        sec_ids = df[df["ticker"] == sec_to_remove]["security_id"].dropna().unique().tolist()
-                        if sec_ids:
-                            client.edit_period(
-                                period_name,
-                                remove_securities=[int(x) for x in sec_ids],
-                            )
-                            st.success(f"Removed {sec_to_remove}.")
-                            st.session_state.pop("period_content", None)
-                            st.rerun()
+                pending_securities = st.session_state.get(_REMOVE_SECURITY_STATE_KEY) or []
+                if pending_securities:
+                    confirmed = _confirm_pending_action(
+                        _REMOVE_SECURITY_STATE_KEY,
+                        f"Remove {len(pending_securities)} securit"
+                        f"{'y' if len(pending_securities) == 1 else 'ies'} and all their values "
+                        f"from {period_name}? {_truncated_list(pending_securities)}",
+                        "Remove securities",
+                        "period_remove_sec",
+                    )
+                    if confirmed:
+                        security_ids = (
+                            df[df["ticker"].isin(pending_securities)]["security_id"]
+                            .dropna()
+                            .unique()
+                            .tolist()
+                        )
+                        if not security_ids:
+                            st.error("Could not resolve any security_id.")
                         else:
-                            st.error("Could not resolve security_id.")
-                    except ApiError as exc:
-                        st.error(str(exc))
+                            try:
+                                client.edit_period(
+                                    period_name,
+                                    remove_securities=[int(x) for x in security_ids],
+                                )
+                                st.session_state.pop(_REMOVE_SECURITY_STATE_KEY, None)
+                                # The multiselect still holds tickers that no longer exist.
+                                st.session_state.pop("period_remove_sec_select", None)
+                                st.session_state["period_save_report"] = {
+                                    "saved": 0,
+                                    "removed": (
+                                        f"Removed {len(pending_securities)} securit"
+                                        f"{'y' if len(pending_securities) == 1 else 'ies'}: "
+                                        f"{_truncated_list(pending_securities)}"
+                                    ),
+                                }
+                                _refresh_period_content(client, period_name)
+                                st.rerun()
+                            except ApiError as exc:
+                                st.error(str(exc))
+                elif securities_to_remove:
+                    if st.button("Remove securities", key="period_remove_sec_btn"):
+                        st.session_state[_REMOVE_SECURITY_STATE_KEY] = list(securities_to_remove)
+                        st.rerun()
 
             with c3:
-                st.caption("Remove a metric from this period")
-                metrics_to_remove = st.selectbox(
-                    "Metric",
-                    options=["— Select —"] + sorted(metrics),
+                st.caption("Remove metrics from this period")
+                metrics_to_remove = st.multiselect(
+                    "Metrics",
+                    options=sorted(metrics),
                     key="period_remove_met_select",
                     label_visibility="collapsed",
+                    placeholder="Select metrics",
                 )
-                if metrics_to_remove != "— Select —" and st.button("Remove metric", key="period_remove_met_btn"):
-                    mid = metric_ids_map.get(metrics_to_remove)
-                    if mid:
-                        try:
-                            client.edit_period(period_name, remove_metrics=[mid])
-                            st.success(f"Removed {metrics_to_remove}.")
-                            st.session_state.pop("period_content", None)
-                            st.rerun()
-                        except ApiError as exc:
-                            st.error(str(exc))
-                    else:
-                        st.error("Could not resolve metric_id.")
+                pending_metrics = st.session_state.get(_REMOVE_METRIC_STATE_KEY) or []
+                if pending_metrics:
+                    affected_values = sum(
+                        int(df[name].notna().sum()) for name in pending_metrics if name in df.columns
+                    )
+                    confirmed = _confirm_pending_action(
+                        _REMOVE_METRIC_STATE_KEY,
+                        f"Remove {len(pending_metrics)} metric(s) from {period_name}? This deletes "
+                        f"{affected_values:,} value(s) in this period. "
+                        f"{_truncated_list(pending_metrics)}",
+                        "Remove metrics",
+                        "period_remove_met",
+                    )
+                    if confirmed:
+                        metric_ids = [
+                            metric_ids_map[name] for name in pending_metrics if metric_ids_map.get(name)
+                        ]
+                        unresolved = [name for name in pending_metrics if not metric_ids_map.get(name)]
+                        if not metric_ids:
+                            st.error("Could not resolve any metric_id.")
+                        else:
+                            try:
+                                client.edit_period(period_name, remove_metrics=metric_ids)
+                                st.session_state.pop(_REMOVE_METRIC_STATE_KEY, None)
+                                # The multiselect still holds metrics that no longer exist.
+                                st.session_state.pop("period_remove_met_select", None)
+                                removed_message = (
+                                    f"Removed {len(metric_ids)} metric(s): "
+                                    f"{_truncated_list([n for n in pending_metrics if n not in unresolved])}"
+                                )
+                                if unresolved:
+                                    removed_message += (
+                                        f" Skipped (no metric id): {_truncated_list(unresolved)}"
+                                    )
+                                st.session_state["period_save_report"] = {
+                                    "saved": 0,
+                                    "removed": removed_message,
+                                }
+                                _refresh_period_content(client, period_name)
+                                st.rerun()
+                            except ApiError as exc:
+                                st.error(str(exc))
+                elif metrics_to_remove:
+                    if st.button("Remove metrics", key="period_remove_met_btn"):
+                        st.session_state[_REMOVE_METRIC_STATE_KEY] = list(metrics_to_remove)
+                        st.rerun()
 
             st.divider()
-            st.markdown("**Metric parameters (higher is better & N/A treatment)**")
+            st.markdown("**Metric parameters (higher is better & N/A treatment) — global**")
+            st.warning(
+                "These belong to the metric definition, not to this period. Saving them changes "
+                "how the metric behaves in **every** period that uses it, and in every ranking, "
+                "portfolio and backtest built from it.",
+                icon="⚠️",
+            )
 
             db_metrics_by_name = {m["metric_name"]: m for m in db_metrics}
             editable_metrics = [m for m in metrics if m in db_metrics_by_name]
@@ -551,26 +961,47 @@ with tabs[1]:
 # --- Delete tab ---
 with tabs[2]:
     render_section("Delete period", "Remove a period and all its data.")
-    try:
-        periods = client.list_periods()
-    except ApiError as exc:
-        st.error(f"Cannot load periods: {exc}")
-        periods = []
+    if periods_error:
+        st.error(periods_error)
 
     if not periods:
         st.info("No periods to delete.")
     else:
+        delete_flash = st.session_state.pop("period_delete_flash", None)
+        if delete_flash:
+            st.success(delete_flash)
+
         delete_period = st.selectbox(
             "Select period to delete",
             options=periods,
             key="period_delete_select",
         )
-        st.warning(f"Delete **{delete_period}**? This removes all fundamental values and index membership.")
-        if st.button("Delete period", type="primary", key="period_delete_btn"):
+        st.warning(
+            f"Delete **{delete_period}**? This removes all fundamental values and index "
+            "membership for the period. It cannot be undone."
+        )
+        typed_period = st.text_input(
+            "Type the period name to confirm",
+            key="period_delete_confirm_text",
+            placeholder=delete_period,
+            help="The name must match exactly before the delete button becomes available.",
+        )
+        delete_confirmed = typed_period.strip() == delete_period
+        if st.button(
+            "Delete period",
+            type="primary",
+            key="period_delete_btn",
+            disabled=not delete_confirmed,
+        ):
             try:
                 client.delete_period(delete_period)
-                st.success(f"Period '{delete_period}' deleted.")
+                st.session_state["period_delete_flash"] = f"Period '{delete_period}' deleted."
                 st.session_state.pop("period_content", None)
+                st.session_state.pop("period_name", None)
+                # These selectors still hold the deleted period, which is no longer an option.
+                st.session_state.pop("period_delete_select", None)
+                st.session_state.pop("period_view_select", None)
+                st.session_state.pop("period_delete_confirm_text", None)
                 st.rerun()
             except ApiError as exc:
                 st.error(str(exc))

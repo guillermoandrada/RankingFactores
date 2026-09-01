@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 from streamlit_app.client.api_client import ApiError
@@ -15,6 +16,7 @@ from streamlit_app.ui import (
 # Key prefix for Create tab to avoid collisions with other tabs
 _CREATE_KEY = "metrics_create"
 _EDIT_KEY = "metrics_edit"
+_CONFLICT_KEY = "metrics_create_name_conflict"
 
 # Human-readable label mapping (display -> API value)
 _HIB_OPTIONS = [("Leave as is", None), ("Yes", True), ("No", False)]
@@ -38,6 +40,84 @@ _EDIT_NA_OPTIONS = [
 
 # Map API na_handling value to human-readable label
 _NA_LABEL_BY_VALUE = {v: k for k, v in _NA_OPTIONS if v}
+
+_BLANK_METRIC = "— Select —"
+_PREVIEW_KEY = "metrics_create_preview"
+
+
+def metrics_referenced_by_profile(profile: dict) -> set[str]:
+    """
+    Metric names a saved scoring profile depends on.
+
+    A profile stores every child as an input key; keys that name another node are
+    subfactors, so the leaves left over are the metrics.
+    """
+    nodes = profile.get("nodes", {}) or {}
+    referenced: set[str] = set()
+    for node in nodes.values():
+        for child_name in (node.get("inputs", {}) or {}):
+            if child_name not in nodes:
+                referenced.add(str(child_name))
+    return referenced
+
+
+def find_metric_usage(
+    metric_name: str,
+    derived_metrics: list[dict],
+    profiles: dict,
+) -> dict[str, list[str]]:
+    """Where a metric is referenced, so its blast radius is visible before editing it."""
+    used_by_metrics = sorted(
+        str(metric.get("metric_name"))
+        for metric in derived_metrics
+        if metric.get("metric_name") != metric_name
+        and metric_name in (metric.get("metric_names") or [])
+    )
+    used_by_profiles = sorted(
+        str(name)
+        for name, profile in (profiles or {}).items()
+        if metric_name in metrics_referenced_by_profile(profile)
+    )
+    return {"derived_metrics": used_by_metrics, "scoring_profiles": used_by_profiles}
+
+
+def _render_metric_preview(preview: dict) -> None:
+    """Show the computed distribution so a valid-but-wrong formula is obvious."""
+    computed = preview.get("computed", 0)
+    if not computed:
+        st.error(
+            f"The formula produced no values for {preview.get('period', '')}. "
+            "Check that its inputs exist in that period."
+        )
+        return
+
+    top_row = st.columns(4)
+    top_row[0].metric("Securities", f"{preview.get('securities', 0):,}")
+    top_row[1].metric("Computed", f"{computed:,}")
+    top_row[2].metric("Missing", f"{preview.get('missing', 0):,}")
+    top_row[3].metric("% Missing", f"{preview.get('missing_pct', 0.0):.1f}%")
+
+    def number(value) -> str:
+        return "—" if value is None else f"{value:,.4g}"
+
+    stats_row = st.columns(5)
+    for column, (label, key) in zip(
+        stats_row, [("Min", "min"), ("P05", "p05"), ("Median", "median"), ("P95", "p95"), ("Max", "max")]
+    ):
+        column.metric(label, number(preview.get(key)))
+
+    st.caption(
+        f"Mean {number(preview.get('mean'))} · Std {number(preview.get('std'))}. "
+        "Missing values are counted before N/A handling is applied."
+    )
+
+    lowest_col, highest_col = st.columns(2)
+    with lowest_col:
+        st.caption("Lowest values")
+        st.dataframe(pd.DataFrame(preview.get("lowest", [])), width="stretch", hide_index=True)
+    with highest_col:
+        st.caption("Highest values")
+        st.dataframe(pd.DataFrame(preview.get("highest", [])), width="stretch", hide_index=True)
 
 
 def _render_create_metric_tab(client):
@@ -80,14 +160,16 @@ def _render_create_metric_tab(client):
 
     # --- Section 1: Formula ---
     st.markdown("#### Formula")
+    # Nothing is preselected: with positional defaults, one click on Create produced a
+    # real metric built from whatever happened to be selected.
+    metric_options = [_BLANK_METRIC] + metric_names
     for i in range(len(chain)):
         col_metric, col_op = st.columns([4, 1])
         with col_metric:
-            idx = min(i, len(metric_names) - 1)
             chain[i] = st.selectbox(
                 f"Metric {i + 1}",
-                options=metric_names,
-                index=idx,
+                options=metric_options,
+                index=0,
                 key=f"{_CREATE_KEY}_metric_{i}",
                 help="Select the base or derived metric.",
             )
@@ -111,7 +193,7 @@ def _render_create_metric_tab(client):
     chain_names = [
         st.session_state.get(f"{_CREATE_KEY}_metric_{i}")
         for i in range(len(chain))
-        if st.session_state.get(f"{_CREATE_KEY}_metric_{i}")
+        if st.session_state.get(f"{_CREATE_KEY}_metric_{i}") not in (None, "", _BLANK_METRIC)
     ]
     chain_ops = [
         st.session_state.get(f"{_CREATE_KEY}_op_{i}", "+")
@@ -128,10 +210,17 @@ def _render_create_metric_tab(client):
 
     # --- Section 2: Output ---
     st.markdown("#### Output")
-    default_name = " / ".join(chain_names) if len(chain_names) >= 2 else ""
+    name_key = f"{_CREATE_KEY}_name"
+    suggested_key = f"{_CREATE_KEY}_name_suggested"
+    suggested_name = " / ".join(chain_names) if len(chain_names) >= 2 else ""
+    if st.session_state.get(suggested_key) != suggested_name:
+        # Refresh the suggestion only while the user has not typed a name of their own.
+        if st.session_state.get(name_key, "") in ("", st.session_state.get(suggested_key, "")):
+            st.session_state[name_key] = suggested_name
+        st.session_state[suggested_key] = suggested_name
     new_metric_name = st.text_input(
         "New metric name",
-        value=default_name,
+        key=name_key,
         placeholder="e.g. Debt / Assets",
         help="Name for the new derived metric.",
     )
@@ -162,29 +251,116 @@ def _render_create_metric_tab(client):
     na_handling = na_values[na_labels.index(na_choice)]
     st.divider()
 
-    # --- Section 4: Actions ---
+    # --- Section 4: Test ---
+    st.markdown("#### Test on a period")
+    st.caption(
+        "Compute the formula without saving it. This is where a unit mismatch or an "
+        "inverted sign shows up, rather than in a ranking weeks later."
+    )
+    formula_ready = len(chain_names) >= 2 and len(chain_ops) == len(chain_names) - 1
+    try:
+        preview_periods = client.list_periods()
+    except ApiError as exc:
+        preview_periods = []
+        st.warning(f"Could not load periods: {exc}")
+
+    if not preview_periods:
+        st.info("No periods available to test against.")
+    else:
+        period_col, button_col = st.columns([3, 1])
+        with period_col:
+            preview_period = st.selectbox(
+                "Period",
+                options=preview_periods,
+                key=f"{_CREATE_KEY}_preview_period",
+            )
+        with button_col:
+            st.write(" ")
+            if st.button("Test formula", key=f"{_CREATE_KEY}_preview_btn", disabled=not formula_ready):
+                try:
+                    with st.spinner("Computing…"):
+                        st.session_state[_PREVIEW_KEY] = client.preview_derived_metric(
+                            period=preview_period,
+                            metric_names=chain_names,
+                            operations=chain_ops,
+                            metric_name=new_metric_name.strip() or None,
+                            na_handling=na_handling,
+                        )
+                except ApiError as exc:
+                    st.session_state.pop(_PREVIEW_KEY, None)
+                    st.error(str(exc))
+        if not formula_ready:
+            st.caption("Select at least two metrics to enable the test.")
+
+        preview = st.session_state.get(_PREVIEW_KEY)
+        if preview:
+            with st.container(border=True):
+                st.caption(
+                    f"**{preview.get('metric_name', '')}** on {preview.get('period', '')}"
+                )
+                _render_metric_preview(preview)
+    st.divider()
+
+    # --- Section 5: Actions ---
     st.markdown("#### Actions")
-    if st.button("Create metric", type="primary", key=f"{_CREATE_KEY}_btn"):
+    target_name = new_metric_name.strip()
+    name_conflict = st.session_state.get(_CONFLICT_KEY)
+    overwrite_confirmed = False
+    if name_conflict and name_conflict == target_name:
+        st.warning(
+            f"A metric named '{target_name}' already exists. Overwriting replaces its "
+            "formula, and every scoring profile using it changes behaviour."
+        )
+        overwrite_confirmed = st.checkbox(
+            f"Overwrite '{target_name}'",
+            key=f"{_CREATE_KEY}_confirm_overwrite",
+        )
+
+    button_label = "Overwrite metric" if overwrite_confirmed else "Create metric"
+    if st.button(button_label, type="primary", key=f"{_CREATE_KEY}_btn"):
         if len(chain_names) < 2:
             st.error("Add at least 2 metrics.")
-        elif not new_metric_name.strip():
+        elif not target_name:
             st.error("New metric name cannot be empty.")
         elif len(chain_ops) != len(chain_names) - 1:
             st.error("Operations count mismatch.")
+        elif name_conflict == target_name and not overwrite_confirmed:
+            st.error("Tick the overwrite box to replace the existing metric.")
         else:
             try:
-                result = client.create_metric_operation(
-                    metric_names=chain_names,
-                    operations=chain_ops,
-                    new_metric_name=new_metric_name.strip(),
-                    higher_is_better=higher_is_better,
-                    na_handling=na_handling,
-                )
-                st.success(f"Derived metric '{new_metric_name.strip()}' created successfully.")
-                with st.expander("Raw response"):
-                    st.json(result)
+                if overwrite_confirmed:
+                    client.update_derived_metric(
+                        target_name,
+                        metric_names=chain_names,
+                        operations=chain_ops,
+                        higher_is_better=higher_is_better,
+                        na_handling=na_handling,
+                    )
+                    st.session_state.pop(_CONFLICT_KEY, None)
+                    st.session_state.pop(_PREVIEW_KEY, None)
+                    st.success(f"Derived metric '{target_name}' overwritten.")
+                else:
+                    result = client.create_metric_operation(
+                        metric_names=chain_names,
+                        operations=chain_ops,
+                        new_metric_name=target_name,
+                        higher_is_better=higher_is_better,
+                        na_handling=na_handling,
+                    )
+                    st.session_state.pop(_CONFLICT_KEY, None)
+                    st.session_state.pop(_PREVIEW_KEY, None)
+                    st.success(f"Derived metric '{target_name}' created successfully.")
+                    with st.expander("Raw response"):
+                        st.json(result)
             except ApiError as exc:
-                st.error(str(exc))
+                if exc.status_code == 409:
+                    # The API refuses to overwrite on create; offer it explicitly instead.
+                    st.session_state[_CONFLICT_KEY] = target_name
+                    st.rerun()
+                elif exc.status_code == 422:
+                    st.error(f"This formula cannot be computed: {exc}")
+                else:
+                    st.error(str(exc))
 
 
 def _render_edit_metric_tab(client):
@@ -237,6 +413,26 @@ def _render_edit_metric_tab(client):
     ).rstrip(" []")
     st.caption(f"**Formula:** {formula_str}")
     st.caption(f"**Higher values better:** {hib_str}  |  **NA handling:** {na_str}")
+
+    try:
+        usage = find_metric_usage(selected, derived_list, client.list_scoring_profiles())
+    except ApiError as exc:
+        usage = None
+        st.warning(f"Could not check where this metric is used: {exc}")
+
+    if usage is not None:
+        used_by_metrics = usage["derived_metrics"]
+        used_by_profiles = usage["scoring_profiles"]
+        if not used_by_metrics and not used_by_profiles:
+            st.info("Not referenced by any other derived metric or scoring profile.")
+        else:
+            parts = []
+            if used_by_metrics:
+                parts.append(f"**{len(used_by_metrics)}** derived metric(s): {', '.join(used_by_metrics)}")
+            if used_by_profiles:
+                parts.append(f"**{len(used_by_profiles)}** scoring profile(s): {', '.join(used_by_profiles)}")
+            st.warning("Used by " + "; ".join(parts) + ". Editing changes all of them.")
+
     with st.expander("Technical details"):
         st.json(metric)
     st.divider()
@@ -376,7 +572,10 @@ def _render_edit_metric_tab(client):
                 st.success(f"Updated '{selected}'.")
                 st.rerun()
             except ApiError as exc:
-                st.error(str(exc))
+                if exc.status_code == 422:
+                    st.error(f"This formula cannot be computed: {exc}")
+                else:
+                    st.error(str(exc))
 
 
 render_page_header(
@@ -418,6 +617,18 @@ with tabs[2]:
             key="delete_select",
         )
         if to_delete:
+            try:
+                delete_usage = find_metric_usage(
+                    to_delete, derived_list, client.list_scoring_profiles()
+                )
+            except ApiError:
+                delete_usage = None
+            if delete_usage and (delete_usage["derived_metrics"] or delete_usage["scoring_profiles"]):
+                references = delete_usage["derived_metrics"] + delete_usage["scoring_profiles"]
+                st.error(
+                    f"**{to_delete}** is still referenced by: {', '.join(references)}. "
+                    "Deleting it leaves those unable to compute."
+                )
             st.warning(f"Delete **{to_delete}**? This removes the formula only.")
             if st.button("Delete metric", type="primary", key="delete_btn"):
                 try:

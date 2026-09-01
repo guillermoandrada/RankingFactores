@@ -97,6 +97,21 @@ def _resolve_dependencies(
     order.append(metric_name)
 
 
+def validate_formula_graph(
+    metric_name: str,
+    formulas: dict[str, dict],
+    base_names: set[str],
+) -> None:
+    """
+    Raise ValueError if `metric_name` cannot be resolved to base metrics.
+
+    Catches unknown dependencies and circular references. Deliberately runs the same
+    resolver that fetch_metric_matrix uses, so a formula that validates here is one a
+    ranking can actually compute.
+    """
+    _resolve_dependencies(metric_name, formulas, base_names, set(), [])
+
+
 def fetch_metric_matrix(
     engine: Engine,
     period: str,

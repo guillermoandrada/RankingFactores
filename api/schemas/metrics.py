@@ -54,6 +54,29 @@ class MetricOperationRequest(BaseModel):
     na_handling: Optional[str] = None
 
 
+class MetricPreviewRequest(BaseModel):
+    """Compute a candidate derived metric on one period without saving it."""
+
+    period: str = Field(..., description="Period to compute the formula on.")
+    metric_names: list[str] = Field(
+        ...,
+        min_length=2,
+        description="Ordered list of metric names the formula combines.",
+    )
+    operations: list[str] = Field(
+        ...,
+        description="Operations between metrics: +, -, *, /. Length must be len(metric_names)-1.",
+    )
+    metric_name: Optional[str] = Field(
+        default=None,
+        description="Name of the candidate metric. Only used for labelling the result.",
+    )
+    na_handling: Optional[str] = Field(
+        default=None,
+        description="Reported back for reference. Not applied, so the true gap rate stays visible.",
+    )
+
+
 class MetricPostRequest(BaseModel):
     """Union: simple create (metric_name) or derived (metric_names, operations)."""
 

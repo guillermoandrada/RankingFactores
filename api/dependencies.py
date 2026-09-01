@@ -57,7 +57,7 @@ def get_derived_store() -> DerivedMetricStore:
 def get_metrics_service():
     from api.services.metrics_service import MetricsService
 
-    return MetricsService(derived_store=get_derived_store())
+    return MetricsService(derived_store=get_derived_store(), db=get_db())
 
 
 @lru_cache(maxsize=1)
@@ -99,3 +99,14 @@ def get_ic_service() -> ICService:
     from api.services.ic_service import ICService
 
     return ICService(db=get_db(), price_provider=get_price_provider())
+
+
+def invalidate_fundamentals_caches() -> None:
+    """
+    Drop caches derived from fundamental values.
+
+    IC results are memoised per argument set for the life of the process, so anything
+    that writes or deletes fundamentals must clear them. Without this an identical IC
+    request replays pre-import numbers and looks freshly computed.
+    """
+    get_ic_service().invalidate_cache()

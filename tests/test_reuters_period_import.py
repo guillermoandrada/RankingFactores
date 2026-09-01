@@ -111,8 +111,14 @@ def test_period_service_passes_reader_and_manual_period() -> None:
                 index_code=None,
             )
 
+    class FakeDb:
+        """The service reads the period list to report create vs replace."""
+
+        def list_periods(self) -> list[str]:
+            return []
+
     importer = FakeImporter()
-    service = PeriodService(db=object(), importer=importer)
+    service = PeriodService(db=FakeDb(), importer=importer)
 
     result = service.create_period_from_file(
         file_contents=_build_reuters_excel_bytes(),

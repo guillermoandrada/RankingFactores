@@ -1,4 +1,4 @@
-"""Periods router: GET content, POST create, PUT edit, DELETE remove period."""
+﻿"""Periods router: GET content, POST create, PUT edit, DELETE remove period."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import logging
 
 from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
 
-from api.dependencies import get_db, get_period_service
+from api.dependencies import get_db, get_period_service, invalidate_fundamentals_caches
 from api.schemas.periods import PeriodEditBody
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ async def create_period(
         )
     try:
         contents = await file.read()
-        return get_period_service().create_period_from_file(
+        result = get_period_service().create_period_from_file(
             file_contents=contents,
             filename=file.filename,
             if_period_exists=if_period_exists,
@@ -77,6 +77,8 @@ async def create_period(
             period=period,
             index_code=index_code,
         )
+        invalidate_fundamentals_caches()
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
@@ -86,6 +88,51 @@ async def create_period(
         raise HTTPException(
             status_code=500,
             detail="An unexpected error occurred while importing the file.",
+        ) from None
+
+
+@router.post("/preview")
+async def preview_period_file(
+    file: UploadFile = File(...),
+    reader: str = Query(
+        default="bloomberg",
+        description="Reader name: 'bloomberg', 'bql', 'reuters_metrics', or 'auto'.",
+    ),
+    if_period_exists: str = Query(
+        default="replace",
+        description="Behaviour to report if the period exists: 'replace' or 'append'.",
+    ),
+    period: str | None = Query(
+        default=None,
+        description="Manual period override, as it would be sent to POST /periods.",
+    ),
+):
+    """
+    Report what creating a period from this file would do, without writing anything.
+
+    Returns the period the reader detects, whether it already exists, the resulting
+    action (create/replace/append), and a sample of the parsed rows.
+    """
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="File must be .xlsx or .xls.")
+    try:
+        contents = await file.read()
+        return get_period_service().preview_period_file(
+            contents,
+            file.filename,
+            reader=reader,
+            period=period,
+            if_period_exists=if_period_exists,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail="File not found") from exc
+    except Exception:
+        logger.exception("Unexpected error during period preview (file=%s)", file.filename)
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred while previewing the file.",
         ) from None
 
 
@@ -111,12 +158,14 @@ async def update_period(
         filename = file.filename
 
     try:
-        return get_period_service().update_period(
+        result = get_period_service().update_period(
             period,
             file_contents=file_contents,
             filename=filename,
             body=body,
         )
+        invalidate_fundamentals_caches()
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
@@ -136,3 +185,4 @@ async def delete_period(period: str):
     if period not in periods:
         raise HTTPException(status_code=404, detail=f"Period '{period}' not found.")
     get_period_service().delete_period(period)
+    invalidate_fundamentals_caches()

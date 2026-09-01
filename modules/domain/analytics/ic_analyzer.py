@@ -32,6 +32,12 @@ class ICPoint:
     n: int
 
 
+def _summarise_periods(periods: list[str], limit: int = 6) -> str:
+    """Comma-separated preview, so a 40-period run cannot flood the warning."""
+    shown = ", ".join(periods[:limit])
+    return shown if len(periods) <= limit else f"{shown} … (+{len(periods) - limit} more)"
+
+
 class ICAnalyzer:
     """
     Compute Rank IC (Spearman) vs forward returns and inter-factor Spearman matrices.
@@ -130,7 +136,7 @@ class ICAnalyzer:
                 forward_months=forward_months,
                 periods=use_periods,
             )
-            warnings.extend(w)
+            warnings.extend(f"{name}: {message}" for message in w)
             used_periods = [p.period for p in points]
             periods_per_metric.append(
                 {
@@ -267,22 +273,30 @@ class ICAnalyzer:
         periods_list = sorted({p for p in (periods or []) if p})
         warnings: list[str] = []
         points: list[ICPoint] = []
+        # Grouped by reason rather than reported per period, so a wide run cannot
+        # bury the explanation under one warning per period.
+        skipped: dict[str, list[str]] = {}
+
+        def skip(period: str, reason: str) -> None:
+            skipped.setdefault(reason, []).append(period)
 
         for period in periods_list:
             try:
                 start_date, end_date = self._parse_period_to_dates(period, forward_months)
             except Exception as exc:
                 self._logger.debug("Skipping period '%s': cannot parse dates (%s)", period, exc)
-                warnings.append(f"Skipped period '{period}': invalid period format.")
+                skip(period, "the period label could not be parsed as a date")
                 continue
 
             fundamentals = self._load_cross_section(metric_id=metric_id, period=period)
             if fundamentals.empty:
+                skip(period, "the metric has no values in that period")
                 continue
 
             fundamentals["value"] = pd.to_numeric(fundamentals["value"], errors="coerce")
             fundamentals = fundamentals.dropna(subset=["ticker", "value"])
             if fundamentals.empty:
+                skip(period, "the metric has no numeric values in that period")
                 continue
 
             returns = self._compute_forward_returns(
@@ -291,16 +305,23 @@ class ICAnalyzer:
                 end_date=end_date,
             )
             if returns.empty:
+                skip(
+                    period,
+                    f"no forward returns were available for {start_date} to {end_date} "
+                    "(check price coverage)",
+                )
                 continue
 
             merged = fundamentals.merge(returns, on="ticker", how="inner")
             merged["forward_return"] = pd.to_numeric(merged["forward_return"], errors="coerce")
             merged = merged.dropna(subset=["value", "forward_return"])
             if len(merged) < 2:
+                skip(period, "fewer than two securities had both a metric value and a return")
                 continue
 
             ic_val = self._spearman_ic(merged["value"].to_numpy(), merged["forward_return"].to_numpy())
             if ic_val is None:
+                skip(period, "the rank correlation was undefined (no variation)")
                 continue
 
             points.append(
@@ -313,6 +334,11 @@ class ICAnalyzer:
                 )
             )
 
+        for reason, affected in skipped.items():
+            warnings.append(
+                f"Skipped {len(affected)} of {len(periods_list)} period(s) because "
+                f"{reason}: {_summarise_periods(affected)}"
+            )
         return points, warnings
 
     def _inter_factor_spearman_matrix(

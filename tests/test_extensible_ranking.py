@@ -156,19 +156,56 @@ def test_apply_display_labels_rejects_duplicate_display_names() -> None:
         _apply_display_labels(df)
 
 
+class _FakeDerivedStore:
+    """In-memory stand-in for the JSON-backed derived metric store."""
+
+    def __init__(self, formulas: dict | None = None) -> None:
+        self.formulas = formulas or {}
+
+    def list_formulas(self) -> dict:
+        return self.formulas
+
+    def get_formula(self, metric_name: str):
+        return self.formulas.get(metric_name)
+
+    def update_formula(self, metric_name: str, **kwargs):
+        current = self.formulas[metric_name]
+        for field in ("metric_names", "operations", "higher_is_better", "na_handling"):
+            if kwargs.get(field) is not None:
+                current[field] = kwargs[field]
+
+    def upsert_formula(self, **kwargs):
+        self.formulas[kwargs["metric_name"]] = {
+            "metric_names": kwargs["metric_names"],
+            "operations": kwargs["operations"],
+        }
+        return {
+            "metric_name": kwargs["metric_name"],
+            "metric_names": kwargs["metric_names"],
+            "operations": kwargs["operations"],
+        }
+
+
+class _FakeMetricsDb:
+    """Supplies the base metric names the formula validator resolves against."""
+
+    def __init__(self, names=("Debt", "Assets")) -> None:
+        self._names = names
+
+    def list_metrics(self) -> list[dict]:
+        return [{"metric_name": name} for name in self._names]
+
+
+def _install_metrics_service(monkeypatch, store, db=None):
+    from api.services.metrics_service import MetricsService
+
+    service = MetricsService(derived_store=store, db=db or _FakeMetricsDb())
+    monkeypatch.setattr(metrics_router, "get_metrics_service", lambda: service)
+    return service
+
+
 def test_metric_operation_endpoint(monkeypatch) -> None:
-    class _FakeDerivedStore:
-        def upsert_formula(self, **kwargs):
-            return {
-                "metric_name": kwargs["metric_name"],
-                "metric_names": kwargs["metric_names"],
-                "operations": kwargs["operations"],
-            }
-
-    def _fake_derived_store():
-        return _FakeDerivedStore()
-
-    monkeypatch.setattr(metrics_router, "get_derived_store", _fake_derived_store)
+    _install_metrics_service(monkeypatch, _FakeDerivedStore())
     client = TestClient(api_main.app)
 
     response = client.post(
@@ -186,6 +223,110 @@ def test_metric_operation_endpoint(monkeypatch) -> None:
     assert payload["success"] is True
     assert payload["metric_name"] == "Debt/Assets"
     assert payload["operations"] == ["/"]
+
+
+def test_creating_a_metric_twice_conflicts_instead_of_overwriting(monkeypatch) -> None:
+    """A create must never silently replace an existing formula."""
+    store = _FakeDerivedStore()
+    _install_metrics_service(monkeypatch, store)
+    client = TestClient(api_main.app)
+
+    body = {
+        "metric_names": ["Debt", "Assets"],
+        "operations": ["/"],
+        "new_metric_name": "Debt/Assets",
+    }
+    assert client.post("/metrics", json=body).status_code == 201
+
+    second = client.post(
+        "/metrics",
+        json={**body, "metric_names": ["Assets", "Debt"]},
+    )
+
+    assert second.status_code == 409
+    # The stored formula is untouched.
+    assert store.formulas["Debt/Assets"]["metric_names"] == ["Debt", "Assets"]
+
+
+def test_creating_a_metric_named_after_a_db_metric_conflicts(monkeypatch) -> None:
+    _install_metrics_service(monkeypatch, _FakeDerivedStore())
+    client = TestClient(api_main.app)
+
+    response = client.post(
+        "/metrics",
+        json={
+            "metric_names": ["Debt", "Assets"],
+            "operations": ["/"],
+            "new_metric_name": "Debt",
+        },
+    )
+
+    assert response.status_code == 409
+
+
+def test_creating_a_metric_with_an_unknown_dependency_is_rejected(monkeypatch) -> None:
+    """Previously this saved fine and only failed later, when a ranking ran."""
+    store = _FakeDerivedStore()
+    _install_metrics_service(monkeypatch, store)
+    client = TestClient(api_main.app)
+
+    response = client.post(
+        "/metrics",
+        json={
+            "metric_names": ["Debt", "DoesNotExist"],
+            "operations": ["/"],
+            "new_metric_name": "Broken",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "DoesNotExist" in response.json()["detail"]
+    assert "Broken" not in store.formulas
+
+
+def test_updating_a_metric_into_a_cycle_is_rejected(monkeypatch) -> None:
+    """A -> B is fine; repointing B at A would make both uncomputable."""
+    store = _FakeDerivedStore(
+        {
+            "A": {"metric_names": ["Debt", "Assets"], "operations": ["/"]},
+            "B": {"metric_names": ["A", "Debt"], "operations": ["+"]},
+        }
+    )
+    _install_metrics_service(monkeypatch, store)
+    client = TestClient(api_main.app)
+
+    response = client.put(
+        "/metrics/A",
+        json={"metric_names": ["B", "Debt"], "operations": ["+"]},
+    )
+
+    assert response.status_code == 422
+    assert "Circular" in response.json()["detail"]
+    assert store.formulas["A"]["metric_names"] == ["Debt", "Assets"]
+
+
+def test_updating_a_valid_formula_succeeds(monkeypatch) -> None:
+    store = _FakeDerivedStore({"A": {"metric_names": ["Debt", "Assets"], "operations": ["/"]}})
+    _install_metrics_service(monkeypatch, store)
+    client = TestClient(api_main.app)
+
+    response = client.put(
+        "/metrics/A",
+        json={"metric_names": ["Assets", "Debt"], "operations": ["-"]},
+    )
+
+    assert response.status_code == 200
+    assert store.formulas["A"]["metric_names"] == ["Assets", "Debt"]
+    assert store.formulas["A"]["operations"] == ["-"]
+
+
+def test_updating_a_missing_metric_is_a_404(monkeypatch) -> None:
+    _install_metrics_service(monkeypatch, _FakeDerivedStore())
+    client = TestClient(api_main.app)
+
+    response = client.put("/metrics/Nope", json={"higher_is_better": True})
+
+    assert response.status_code == 404
 
 
 def test_scoring_profile_get_and_delete(monkeypatch, tmp_path: Path) -> None:

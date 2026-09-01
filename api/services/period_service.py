@@ -36,35 +36,99 @@ class PeriodService:
         Returns structured result with period name and counts.
         Raises ValueError for invalid input or import errors.
         """
+        self._validate_create_inputs(filename, if_period_exists, reader, period)
+
+        normalized_period = (period or "").strip() or None
+        normalized_index_code = (index_code or "").strip() or None
+        # Snapshot before importing: afterwards the target period always exists.
+        periods_before = set(self._db.list_periods())
+
+        result = self._with_temp_file(
+            file_contents,
+            filename,
+            lambda path: self._importer.import_file(
+                path,
+                verbose=False,
+                period_override=normalized_period,
+                reader=reader,
+                if_period_exists=if_period_exists,
+                index_code_override=normalized_index_code,
+            ),
+        )
+        payload = _import_result_to_dict(result)
+
+        # The target period is only known now for readers that infer it from the file.
+        existed_before = payload.get("period") in periods_before
+        payload["action"] = (
+            ("append" if if_period_exists == "append" else "replace")
+            if existed_before
+            else "create"
+        )
+        return payload
+
+    @staticmethod
+    def _validate_create_inputs(
+        filename: str,
+        if_period_exists: str,
+        reader: str,
+        period: str | None,
+    ) -> None:
+        """Shared by create and preview, so a preview cannot pass what the import rejects."""
         if not filename or not filename.lower().endswith((".xlsx", ".xls")):
             raise ValueError("File must be .xlsx or .xls.")
         if if_period_exists not in ("replace", "append"):
             raise ValueError("if_period_exists must be 'replace' or 'append'.")
         if reader not in ("bloomberg", "bql", "reuters_metrics", "auto"):
             raise ValueError("reader must be 'bloomberg', 'bql', 'reuters_metrics', or 'auto'.")
-
-        normalized_period = (period or "").strip() or None
-        normalized_index_code = (index_code or "").strip() or None
-        if reader == "reuters_metrics" and not normalized_period:
+        if reader == "reuters_metrics" and not (period or "").strip():
             raise ValueError("period is required when reader='reuters_metrics'.")
 
+    @staticmethod
+    def _with_temp_file(file_contents: bytes, filename: str, operation):
+        """Run an operation against the uploaded bytes on disk, always cleaning up."""
         tmp_suffix = Path(filename).suffix or ".xlsx"
         with tempfile.NamedTemporaryFile(delete=False, suffix=tmp_suffix) as tmp:
             tmp.write(file_contents)
             tmp_path = tmp.name
-
         try:
-            result = self._importer.import_file(
-                tmp_path,
-                verbose=False,
-                period_override=normalized_period,
-                reader=reader,
-                if_period_exists=if_period_exists,
-                index_code_override=normalized_index_code,
-            )
-            return _import_result_to_dict(result)
+            return operation(tmp_path)
         finally:
             Path(tmp_path).unlink(missing_ok=True)
+
+    def preview_period_file(
+        self,
+        file_contents: bytes,
+        filename: str,
+        *,
+        reader: str = "bloomberg",
+        period: str | None = None,
+        if_period_exists: str = "replace",
+    ) -> dict[str, Any]:
+        """
+        Report what create_period_from_file would do with this file, writing nothing.
+
+        Validates the same inputs as the create path so a preview cannot report success
+        for a request the import would reject.
+        """
+        self._validate_create_inputs(filename, if_period_exists, reader, period)
+
+        normalized_period = (period or "").strip() or None
+        description = self._with_temp_file(
+            file_contents,
+            filename,
+            lambda path: self._importer.describe_file(
+                path, reader=reader, period_override=normalized_period
+            ),
+        )
+
+        resolved_period = description.get("period")
+        period_exists = bool(resolved_period) and resolved_period in set(self._db.list_periods())
+        if not period_exists:
+            action = "create"
+        else:
+            action = "append" if if_period_exists == "append" else "replace"
+
+        return {**description, "period_exists": period_exists, "action": action}
 
     def update_period(
         self,

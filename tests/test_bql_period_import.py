@@ -313,8 +313,14 @@ def test_period_service_lets_bql_reader_resolve_index_code() -> None:
                 index_code="BQL_INDEX",
             )
 
+    class FakeDb:
+        """The service reads the period list to report create vs replace."""
+
+        def list_periods(self) -> list[str]:
+            return ["2023/12/31"]
+
     importer = FakeImporter()
-    service = PeriodService(db=object(), importer=importer)
+    service = PeriodService(db=FakeDb(), importer=importer)
 
     result = service.create_period_from_file(
         file_contents=_build_bql_excel_bytes(),
@@ -324,9 +330,46 @@ def test_period_service_lets_bql_reader_resolve_index_code() -> None:
     )
 
     assert result["success"] is True
+    assert result["action"] == "create"
     assert importer.calls
     assert importer.calls[0]["reader"] == "bql"
     assert importer.calls[0]["index_code_override"] is None
+
+
+def test_period_service_reports_replace_when_the_period_already_exists() -> None:
+    """The period is inferred from the file, so the target is only known after the import."""
+
+    class FakeImporter:
+        def import_file(self, filepath: str, **kwargs):
+            return ImportResult(
+                period="2024/03/31",
+                companies_count=2,
+                metrics_count=3,
+                records_count=6,
+                index_code="BQL_INDEX",
+            )
+
+    class FakeDb:
+        def list_periods(self) -> list[str]:
+            return ["2024/03/31"]
+
+    service = PeriodService(db=FakeDb(), importer=FakeImporter())
+
+    replaced = service.create_period_from_file(
+        file_contents=_build_bql_excel_bytes(),
+        filename="bql.xlsx",
+        if_period_exists="replace",
+        reader="bql",
+    )
+    merged = service.create_period_from_file(
+        file_contents=_build_bql_excel_bytes(),
+        filename="bql.xlsx",
+        if_period_exists="append",
+        reader="bql",
+    )
+
+    assert replaced["action"] == "replace"
+    assert merged["action"] == "append"
 
 
 def test_periods_endpoint_bql_no_longer_requires_manual_index_code(monkeypatch) -> None:

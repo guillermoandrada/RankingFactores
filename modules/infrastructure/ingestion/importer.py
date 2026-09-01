@@ -2,6 +2,7 @@
 Orchestrates reading, validation, and persistence of financial data.
 """
 
+import json
 import os
 import sys
 from typing import Optional
@@ -86,6 +87,77 @@ class DataImporter:
                 f"{result.metrics_count} metrics, {result.records_count} records."
             )
         return result
+
+    def describe_file(
+        self,
+        filepath: str,
+        *,
+        reader: str = "bloomberg",
+        period_override: Optional[str] = None,
+        sample_row_count: int = 5,
+    ) -> dict:
+        """
+        Describe what importing this file would produce, without touching the database.
+
+        Uses the same readers as import_file, so the reported period and index code are
+        the ones an import would actually use. Detection problems are returned as
+        `period_error` rather than raised: for a preview they are the answer, not a failure.
+        """
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"File not found: {filepath}")
+
+        df = self._reader.read(filepath, reader)
+        if "Ticker" in df.columns:
+            df = df.dropna(subset=["Ticker"])
+
+        detected_period: Optional[str] = None
+        period_error: Optional[str] = None
+        try:
+            candidate = self._reader.extract_period(filepath, reader)
+            if str(candidate or "").strip() and str(candidate).strip().upper() != "UNKNOWN":
+                detected_period = str(candidate).strip()
+            else:
+                period_error = f"Reader '{reader}' could not determine a period from this file."
+        except (ValueError, KeyError, IndexError, OSError) as exc:
+            period_error = str(exc)
+
+        index_code: Optional[str] = None
+        try:
+            index_code = self._reader.extract_index_code(filepath, reader)
+        except (ValueError, KeyError, IndexError, OSError):
+            index_code = None
+
+        period = (period_override or "").strip() or detected_period
+
+        return {
+            "reader": reader,
+            "period": period,
+            "period_source": "manual" if period_override else "file",
+            "detected_period": detected_period,
+            "period_error": period_error if not period_override else None,
+            "index_code": index_code,
+            "sheet_names": self._sheet_names(filepath),
+            "row_count": int(len(df)),
+            "column_count": int(len(df.columns)),
+            "columns": [str(column) for column in df.columns],
+            "sample_rows": self._sample_rows(df, sample_row_count),
+            "missing_ticker_column": "Ticker" not in df.columns,
+        }
+
+    @staticmethod
+    def _sheet_names(filepath: str) -> list[str]:
+        try:
+            with pd.ExcelFile(filepath) as workbook:
+                return [str(name) for name in workbook.sheet_names]
+        except (ValueError, OSError):
+            return []
+
+    @staticmethod
+    def _sample_rows(df: pd.DataFrame, count: int) -> list[dict]:
+        """JSON-safe records: to_json handles NaN and timestamps that to_dict does not."""
+        if df.empty or count <= 0:
+            return []
+        return json.loads(df.head(count).to_json(orient="records", date_format="iso"))
 
     def _enrich_bql_dataframe(self, df: pd.DataFrame, period: str) -> pd.DataFrame:
         tickers = df["Ticker"].dropna().astype(str).str.strip()

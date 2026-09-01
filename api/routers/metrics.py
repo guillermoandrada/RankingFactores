@@ -6,8 +6,13 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from api.dependencies import get_derived_store, get_metrics_service
-from api.schemas.metrics import MetricPostRequest, DerivedMetricPutRequest
+from api.dependencies import get_metrics_service
+from api.schemas.metrics import (
+    DerivedMetricPutRequest,
+    MetricPostRequest,
+    MetricPreviewRequest,
+)
+from api.services.metrics_service import DuplicateMetricError, MetricNotFoundError
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -31,7 +36,12 @@ async def list_derived_metrics(
 
 @router.post("", status_code=201)
 async def create_derived_metric(request: MetricPostRequest):
-    """Create derived metric formula (stored in JSON, computed on the fly)."""
+    """
+    Create a derived metric formula (stored in JSON, computed on the fly).
+
+    Returns 409 when the name is taken: a create must never overwrite an existing
+    formula. Use PUT to change one deliberately.
+    """
     if not (request.metric_names and len(request.metric_names) >= 2 and request.operations and request.new_metric_name):
         raise HTTPException(
             status_code=400,
@@ -43,7 +53,7 @@ async def create_derived_metric(request: MetricPostRequest):
             detail=f"operations must have {len(request.metric_names) - 1} items for {len(request.metric_names)} metrics.",
         )
     try:
-        result = get_derived_store().upsert_formula(
+        result = get_metrics_service().create_derived_metric(
             metric_name=request.new_metric_name,
             metric_names=request.metric_names,
             operations=request.operations,
@@ -51,13 +61,40 @@ async def create_derived_metric(request: MetricPostRequest):
             na_handling=request.na_handling,
         )
         return {"success": True, **result}
+    except DuplicateMetricError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/preview")
+async def preview_derived_metric(request: MetricPreviewRequest):
+    """
+    Compute a candidate formula on one period without saving it.
+
+    Returns the distribution and the extreme values, so a formula that is valid but
+    wrong can be spotted before it reaches a scoring profile.
+    """
+    if len(request.operations) != len(request.metric_names) - 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"operations must have {len(request.metric_names) - 1} items for {len(request.metric_names)} metrics.",
+        )
+    try:
+        return get_metrics_service().preview_derived_metric(
+            period=request.period,
+            metric_names=request.metric_names,
+            operations=request.operations,
+            metric_name=request.metric_name,
+            na_handling=request.na_handling,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.put("/{metric_name:path}")
 async def update_derived_metric(metric_name: str, request: DerivedMetricPutRequest):
-    """Edit derived metric formula."""
+    """Edit a derived metric formula. The result must still resolve to base metrics."""
     if not any([
         request.metric_names is not None,
         request.operations is not None,
@@ -69,7 +106,7 @@ async def update_derived_metric(metric_name: str, request: DerivedMetricPutReque
             detail="Provide at least one of metric_names, operations, higher_is_better, or na_handling.",
         )
     try:
-        get_derived_store().update_formula(
+        get_metrics_service().update_derived_metric(
             metric_name=metric_name,
             metric_names=request.metric_names,
             operations=request.operations,
@@ -77,14 +114,16 @@ async def update_derived_metric(metric_name: str, request: DerivedMetricPutReque
             na_handling=request.na_handling,
         )
         return {"success": True, "metric_name": metric_name}
-    except ValueError as exc:
+    except MetricNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.delete("/{metric_name:path}", status_code=204)
 async def delete_derived_metric(metric_name: str):
-    """Delete derived metric formula from JSON."""
+    """Delete a derived metric formula from JSON."""
     try:
-        get_derived_store().delete_formula(metric_name)
-    except ValueError as exc:
+        get_metrics_service().delete_derived_metric(metric_name)
+    except MetricNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
