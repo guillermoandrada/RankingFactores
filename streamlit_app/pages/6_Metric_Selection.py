@@ -54,6 +54,19 @@ def _correlation_dataframe(inter: dict[str, Any]) -> pd.DataFrame:
     return pd.DataFrame(matrix, index=labels, columns=labels)
 
 
+def _profile_metric_names(profile_data: dict[str, Any]) -> list[str]:
+    """Leaf metric names used anywhere in a scoring profile's node tree."""
+    nodes = profile_data.get("nodes") or {}
+    node_names = set(nodes.keys())
+    leaves: set[str] = set()
+    for node in nodes.values():
+        inputs = (node or {}).get("inputs") or {}
+        for child_name in inputs:
+            if child_name not in node_names:
+                leaves.add(str(child_name))
+    return sorted(leaves)
+
+
 def _periods_dataframe(periods_info: dict[str, Any]) -> pd.DataFrame:
     """Per-metric period availability, shared by the on-screen view and the export."""
     return pd.DataFrame(
@@ -346,8 +359,42 @@ try:
 except ApiError:
     available_periods = []
 
+try:
+    scoring_profiles = client.list_scoring_profiles()
+    scoring_profile_names = sorted(scoring_profiles.keys())
+except ApiError:
+    scoring_profiles = {}
+    scoring_profile_names = []
+
 with st.container(border=True):
     st.markdown("**Inputs**")
+
+    if scoring_profile_names:
+        profile_col, load_col = st.columns([3, 1])
+        with profile_col:
+            quick_select_profile = st.selectbox(
+                "Quick select from scoring profile",
+                options=scoring_profile_names,
+                key="ic_quick_select_profile",
+                help="Load the metrics used by an existing scoring profile into the selection below.",
+            )
+        with load_col:
+            st.write("")
+            if st.button("Load metrics", key="ic_quick_select_load_btn"):
+                profile_metrics = _profile_metric_names(scoring_profiles.get(quick_select_profile, {}))
+                usable = sorted(set(profile_metrics) & set(metric_names))
+                st.session_state["ic_metrics_multiselect"] = usable
+                missing = sorted(set(profile_metrics) - set(metric_names))
+                if missing:
+                    st.session_state["ic_quick_select_missing"] = missing
+                st.rerun()
+
+        quick_select_missing = st.session_state.pop("ic_quick_select_missing", None)
+        if quick_select_missing:
+            st.caption(
+                "Not loaded (not found among available metrics): " + ", ".join(quick_select_missing)
+            )
+
     metrics_column, horizon_column = st.columns([3, 2])
     with metrics_column:
         selected_metrics = st.multiselect(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import altair as alt
@@ -226,14 +226,22 @@ def _render_backtest_result(backtest_result: dict[str, Any]) -> None:
         _render_component_returns(backtest_result.get("components", []))
 
 
-def _new_schedule_row(available_periods: list[str]) -> dict[str, Any]:
-    """A one-year window on the workspace period, used for the first and every added row."""
-    today = date.today()
+def _new_schedule_row(
+    available_periods: list[str], *, after: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """
+    A one-year window, used for the first row and every added row.
+
+    Schedule windows must not overlap, so a row added after an existing one starts the
+    day after that row's end date instead of defaulting back to "today".
+    """
+    previous_end = (after or {}).get("end_date")
+    start_date = previous_end + timedelta(days=1) if isinstance(previous_end, date) else date.today() - timedelta(days=365)
     return {
         "id": str(uuid.uuid4()),
         "period": current_period(available_periods),
-        "start_date": today - timedelta(days=365),
-        "end_date": today,
+        "start_date": start_date,
+        "end_date": start_date + timedelta(days=365),
     }
 
 
@@ -268,9 +276,96 @@ def _migrate_legacy_schedule_df_to_rows(available_periods: list[str]) -> None:
         st.session_state[STRATEGY_SCHEDULE_ROWS_KEY] = rows_out
 
 
+_QUARTER_END_MONTHS = (3, 6, 9, 12)
+_QUARTER_END_DAY = 30
+
+
+def _quarterly_period_labels(first_date: date, last_date: date) -> list[str]:
+    """Period labels for day 30 of March/June/September/December within [first_date, last_date]."""
+    labels: list[str] = []
+    for year in range(first_date.year, last_date.year + 1):
+        for month in _QUARTER_END_MONTHS:
+            candidate = date(year, month, _QUARTER_END_DAY)
+            if first_date <= candidate <= last_date:
+                labels.append(f"{year}/{month:02d}/{_QUARTER_END_DAY}")
+    return labels
+
+
+def _generate_quarterly_schedule_rows(
+    first_date: date, last_date: date, available_periods: list[str]
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """
+    Rolling quarterly windows: each row rebalances on one quarter-end period and holds
+    until the next one. Labels absent from available_periods are reported, not guessed.
+    """
+    labels = _quarterly_period_labels(first_date, last_date)
+    usable = [label for label in labels if label in available_periods]
+    skipped = [label for label in labels if label not in available_periods]
+
+    rows: list[dict[str, Any]] = []
+    for label, next_label in zip(usable, usable[1:]):
+        rows.append(
+            {
+                "id": str(uuid.uuid4()),
+                "period": label,
+                "start_date": datetime.strptime(label, "%Y/%m/%d").date(),
+                # Windows must not overlap, so this row ends the day before the next one starts.
+                "end_date": datetime.strptime(next_label, "%Y/%m/%d").date() - timedelta(days=1),
+            }
+        )
+    return rows, skipped
+
+
+def _render_quarterly_auto_generate(available_periods: list[str]) -> None:
+    st.caption(
+        "Auto-generate rolling quarterly windows (day 30 of March/June/September/December) "
+        "between a first and last date."
+    )
+    first_col, last_col, action_col = st.columns([2, 2, 1])
+    today = date.today()
+    with first_col:
+        first_date = st.date_input(
+            "First date",
+            value=today - timedelta(days=365 * 3),
+            key="strategy_bt_auto_first_date",
+        )
+    with last_col:
+        last_date = st.date_input(
+            "Last date",
+            value=today,
+            key="strategy_bt_auto_last_date",
+        )
+    with action_col:
+        st.write("")
+        generate_clicked = st.button("Generate windows", key="strategy_bt_auto_generate_btn")
+
+    if generate_clicked:
+        if first_date >= last_date:
+            st.error("First date must be before last date.")
+        else:
+            rows, skipped = _generate_quarterly_schedule_rows(first_date, last_date, available_periods)
+            if not rows:
+                st.error(
+                    "No two consecutive quarter-end periods (day 30 of Mar/Jun/Sep/Dec) were "
+                    "found in that range among the available periods."
+                )
+            else:
+                st.session_state[STRATEGY_SCHEDULE_ROWS_KEY] = rows
+                if skipped:
+                    st.session_state["strategy_bt_auto_skipped"] = skipped
+                st.rerun()
+
+    auto_skipped = st.session_state.pop("strategy_bt_auto_skipped", None)
+    if auto_skipped:
+        st.caption("Skipped (no matching period in the database): " + ", ".join(auto_skipped))
+
+
 def _render_strategy_schedule_windows(available_periods: list[str]) -> None:
     st.markdown("**Schedule windows**")
     st.caption("Pick a ranking period and calendar start/end dates for each backtest window.")
+
+    _render_quarterly_auto_generate(available_periods)
+    st.divider()
 
     _migrate_legacy_schedule_df_to_rows(available_periods)
     if STRATEGY_SCHEDULE_ROWS_KEY not in st.session_state:
@@ -333,8 +428,9 @@ def _render_strategy_schedule_windows(available_periods: list[str]) -> None:
     st.session_state[STRATEGY_SCHEDULE_ROWS_KEY] = updated
 
     if st.button("Add window", key="strategy_bt_sched_add"):
+        last_row = updated[-1] if updated else None
         st.session_state[STRATEGY_SCHEDULE_ROWS_KEY].append(
-            _new_schedule_row(available_periods)
+            _new_schedule_row(available_periods, after=last_row)
         )
         st.rerun()
 

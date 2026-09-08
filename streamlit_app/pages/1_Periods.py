@@ -490,7 +490,7 @@ with tabs[0]:
         upload_behavior = st.selectbox(
             "If period exists",
             options=["replace", "append"],
-            index=0,
+            index=1,
             key="period_if_exists",
             help="replace = overwrite; append = merge new metrics/securities",
         )
