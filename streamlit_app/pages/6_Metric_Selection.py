@@ -21,6 +21,9 @@ from streamlit_app.ui import (
 
 _IC_RESULT_KEY = "ic_analysis_result"
 _ALL_PERIODS_LABEL = "every period available per metric"
+# Below this absolute mean Rank IC the sign is treated as noise, not as evidence
+# that the stored direction flag is wrong.
+_DIRECTION_IC_THRESHOLD = 0.02
 _HEATMAP_CELL_PX = 46
 _HEATMAP_MIN_PX = 260
 _HEATMAP_MAX_PX = 900
@@ -183,6 +186,110 @@ def _render_inter_factor_section(inter: dict[str, Any]) -> None:
     )
 
 
+def _direction_verdict(mean_ic: float | None, higher_is_better: bool) -> str:
+    """
+    Classify one metric's IC sign against its stored direction flag.
+
+    Returns one of: "consistent", "contradiction", "inconclusive".
+    """
+    if mean_ic is None:
+        return "inconclusive"
+    if abs(mean_ic) < _DIRECTION_IC_THRESHOLD:
+        return "inconclusive"
+    ic_says_higher_is_better = mean_ic > 0
+    return "consistent" if ic_says_higher_is_better == higher_is_better else "contradiction"
+
+
+def _flip_db_metric_direction(client, metric_id: int, metric_name: str, new_value: bool) -> None:
+    """Persist the inverted higher_is_better flag and refresh the page."""
+    try:
+        client.update_db_metric(metric_id, higher_is_better=new_value)
+    except ApiError as exc:
+        st.error(f"Could not update '{metric_name}': {exc}")
+        return
+    direction = "higher is better" if new_value else "lower is better"
+    st.toast(f"'{metric_name}' flipped to {direction}.")
+    st.rerun()
+
+
+def _render_direction_check(
+    predictive: list[dict[str, Any]],
+    db_metric_index: dict[str, dict[str, Any]],
+    client,
+) -> None:
+    """
+    Section C: cross-check the IC sign against each metric's stored direction flag.
+
+    A strongly negative Mean Rank IC on a metric marked higher_is_better=True (or the
+    reverse) means the metric would score backwards in scoring profiles and backtests;
+    offer a one-click flip of the flag.
+    """
+    st.markdown("### Section C — Direction check (IC sign vs higher_is_better)")
+    st.caption(
+        "Scoring profiles use each metric's **higher_is_better** flag to orient its "
+        "z-score, while the Rank IC above is computed on raw values. When the IC sign "
+        "contradicts the stored flag, the metric contributes with the wrong sign in "
+        f"rankings and backtests. Contradictions require |Mean Rank IC| ≥ "
+        f"{_DIRECTION_IC_THRESHOLD:.2f}; weaker ICs are treated as inconclusive."
+    )
+    if not predictive:
+        st.info("No predictive IC results to check directions against.")
+        return
+
+    contradictions = 0
+    for item in predictive:
+        metric_name = item.get("metric_name", "")
+        mean_ic = item.get("mean_rank_ic")
+        db_metric = db_metric_index.get(metric_name)
+        stored_flag = db_metric.get("higher_is_better") if db_metric else None
+        # Scoring falls back to higher-is-better when the flag was never set.
+        effective_flag = True if stored_flag is None else bool(stored_flag)
+        verdict = _direction_verdict(mean_ic, effective_flag)
+
+        flag_label = "higher is better" if effective_flag else "lower is better"
+        if stored_flag is None:
+            flag_label += " (not set, scoring default)"
+        ic_label = "n/a" if mean_ic is None else f"{mean_ic:+.4f}"
+
+        name_col, ic_col, flag_col, action_col = st.columns([3, 2, 3, 3])
+        name_col.markdown(f"**{metric_name}**")
+        ic_col.markdown(f"Mean IC: `{ic_label}`")
+        flag_col.markdown(f"Flag: `{flag_label}`")
+
+        if verdict == "contradiction" and db_metric and db_metric.get("metric_id") is not None:
+            contradictions += 1
+            new_value = not effective_flag
+            suggested = "higher is better" if new_value else "lower is better"
+            with action_col:
+                if st.button(
+                    f"Flip to '{suggested}'",
+                    key=f"ic_flip_direction_{db_metric['metric_id']}",
+                    help=(
+                        f"'{metric_name}' is marked '{flag_label}' but its Mean Rank IC "
+                        f"is {ic_label}: it is scoring backwards. Flip the flag so "
+                        "scoring matches the observed IC direction."
+                    ),
+                ):
+                    _flip_db_metric_direction(
+                        client, int(db_metric["metric_id"]), metric_name, new_value
+                    )
+        elif verdict == "contradiction":
+            action_col.markdown("⚠️ Contradiction (flag not editable here)")
+        elif verdict == "consistent":
+            action_col.markdown("✅ Consistent")
+        else:
+            action_col.markdown("➖ Inconclusive (weak IC)")
+
+    if contradictions:
+        st.warning(
+            f"{contradictions} metric(s) have an IC sign that contradicts their stored "
+            "higher_is_better flag. Until flipped, they contribute backwards to any "
+            "scoring profile and backtest that uses them."
+        )
+    else:
+        st.success("No direction contradictions between IC signs and stored flags.")
+
+
 def _render_export(result: dict[str, Any]) -> None:
     st.divider()
     with st.container(border=True):
@@ -197,7 +304,11 @@ def _render_export(result: dict[str, Any]) -> None:
         )
 
 
-def _render_ic_result(result: dict[str, Any]) -> None:
+def _render_ic_result(
+    result: dict[str, Any],
+    db_metric_index: dict[str, dict[str, Any]],
+    client,
+) -> None:
     for warning in result.get("warnings", []):
         st.warning(warning)
 
@@ -206,6 +317,8 @@ def _render_ic_result(result: dict[str, Any]) -> None:
     _render_predictive_section(result.get("predictive", []))
     st.divider()
     _render_inter_factor_section(result.get("inter_factor_correlation", {}))
+    st.divider()
+    _render_direction_check(result.get("predictive", []), db_metric_index, client)
     _render_export(result)
 
 
@@ -223,7 +336,10 @@ try:
     metric_names = sorted([m["metric_name"] for m in db_metrics if m.get("metric_name")])
 except ApiError as exc:
     st.error(f"Cannot load metrics: {exc}")
+    db_metrics = []
     metric_names = []
+
+db_metric_index = {m["metric_name"]: m for m in db_metrics if m.get("metric_name")}
 
 try:
     available_periods = client.list_periods()
@@ -303,4 +419,4 @@ if stored_result is None:
 else:
     st.divider()
     render_result_caption(stored_result, current_inputs)
-    _render_ic_result(stored_result.payload)
+    _render_ic_result(stored_result.payload, db_metric_index, client)

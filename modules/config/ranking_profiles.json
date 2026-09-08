@@ -1,3 +1,60 @@
 {
-  "profiles": {}
+  "profiles": {
+    "Value_08-09": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.125,
+            "P/E Change": 0.0625,
+            "P/E Trend": 0.0625,
+            "Current P/B Ratio": 0.0625,
+            "P/B Change": 0.03125,
+            "P/B Trend": 0.03125,
+            "Current EV / EBITDA": 0.25,
+            "EV/EBITDA Change": 0.125,
+            "EV/EBITDA Trend": 0.125,
+            "Current FCFF Yield": 0.0625,
+            "FCFF Yield Change": 0.03125,
+            "FCFF Yield Trend": 0.03125
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_08-09": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current ROIC/WACC": 0.225,
+            "ROIC/WACC Change": 0.075,
+            "Current Gross Margin": 0.1,
+            "Gross Margin Change": 0.05,
+            "Gross Margin Trend": 0.05,
+            "Current FCF/Net Income": 0.125,
+            "FCF/Net Income Change": 0.0625,
+            "FCF/Net Income Trend": 0.0625,
+            "Current Net Debt / EBITDA": 0.075,
+            "Net Debt/EBITDA Change": 0.0375,
+            "Net Debt/EBITDA Trend": 0.0375,
+            "EPS Variability": 0.1
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    }
+  }
 }

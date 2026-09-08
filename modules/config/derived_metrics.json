@@ -296,6 +296,201 @@
       ],
       "higher_is_better": true,
       "na_handling": "replace_with_zero"
+    },
+    "P/E Change": {
+      "metric_names": [
+        "Current P/E Ratio",
+        "Past P/E Ratio",
+        "Past P/E Ratio"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "P/E Trend": {
+      "metric_names": [
+        "Estimated P/E Ratio",
+        "Current P/E Ratio",
+        "Current P/E Ratio"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "P/B Change": {
+      "metric_names": [
+        "Current P/B Ratio",
+        "Past P/B Ratio",
+        "Past P/B Ratio"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "P/B Trend": {
+      "metric_names": [
+        "Estimated P/B Ratio",
+        "Current P/B Ratio",
+        "Current P/B Ratio"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "EV/EBITDA Change": {
+      "metric_names": [
+        "Current EV / EBITDA",
+        "Past EV / EBITDA",
+        "Past EV / EBITDA"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "EV/EBITDA Trend": {
+      "metric_names": [
+        "Estimated EV / EBITDA",
+        "Current EV / EBITDA",
+        "Current EV / EBITDA"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "FCFF Yield Change": {
+      "metric_names": [
+        "Current FCFF Yield",
+        "Past FCFF Yield",
+        "Past FCFF Yield"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "FCFF Yield Trend": {
+      "metric_names": [
+        "Estimated FCFF Yield",
+        "Current FCFF Yield",
+        "Current FCFF Yield"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "ROIC/WACC Change": {
+      "metric_names": [
+        "Current ROIC/WACC",
+        "5Y Average ROIC/WACC",
+        "5Y Average ROIC/WACC"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Gross Margin Change": {
+      "metric_names": [
+        "Current Gross Margin",
+        "Past Gross Margin",
+        "Past Gross Margin"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Gross Margin Trend": {
+      "metric_names": [
+        "Estimated Gross Margin",
+        "Current Gross Margin",
+        "Current Gross Margin"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "FCF/Net Income Change": {
+      "metric_names": [
+        "Current FCF/Net Income",
+        "5Y Average FCF/Net Income",
+        "5Y Average FCF/Net Income"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "FCF/Net Income Trend": {
+      "metric_names": [
+        "Estimated FCF/Net Income",
+        "Current FCF/Net Income",
+        "Current FCF/Net Income"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Net Debt/EBITDA Change": {
+      "metric_names": [
+        "Current Net Debt / EBITDA",
+        "Past Net Debt / EBITDA",
+        "Past Net Debt / EBITDA"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Net Debt/EBITDA Trend": {
+      "metric_names": [
+        "Estimated Net Debt / EBITDA",
+        "Current Net Debt / EBITDA",
+        "Current Net Debt / EBITDA"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
     }
   }
 }
