@@ -39,10 +39,7 @@ class BqlFileReader(BaseFileReader):
 
     def read(self, filepath: str) -> pd.DataFrame:
         if not self.can_read(filepath):
-            raise ValueError(
-                "BQL workbook must contain sheets 'Name', 'Classification', "
-                "'Current', 'Past', 'Estimated', and 'Config'."
-            )
+            raise ValueError(self._unreadable_message())
 
         sheet_frames: list[pd.DataFrame] = []
         seen_factors: set[str] = set()
@@ -96,6 +93,13 @@ class BqlFileReader(BaseFileReader):
         raw_value = str(config_df.iat[1, 1] or "").strip()
         return raw_value or None
 
+    def _unreadable_message(self) -> str:
+        """Why this reader turned the workbook down, so a subclass can say more."""
+        return (
+            "BQL workbook must contain sheets 'Name', 'Classification', "
+            "'Current', 'Past', 'Estimated', and 'Config'."
+        )
+
     def _read_data_sheet(self, filepath: str, sheet_name: str) -> pd.DataFrame:
         raw = pd.read_excel(filepath, sheet_name=sheet_name, header=0)
         raw = raw.rename(columns=lambda value: str(value).strip())
@@ -121,13 +125,7 @@ class BqlFileReader(BaseFileReader):
             raise ValueError(
                 f"BQL sheet '{sheet_name}' contains duplicated factor names: {duplicate_factors}"
             )
-        duplicate_tickers = (
-            normalized["Ticker"].dropna().astype(str).value_counts().loc[lambda values: values > 1]
-        )
-        if not duplicate_tickers.empty:
-            raise ValueError(
-                f"BQL sheet '{sheet_name}' contains duplicated tickers: {duplicate_tickers.index.tolist()}"
-            )
+        self._ensure_unique_tickers(normalized["Ticker"], sheet_name)
 
         return normalized
 
@@ -148,14 +146,7 @@ class BqlFileReader(BaseFileReader):
             }
         )[["Ticker", "Long Name"]].copy()
         normalized["Ticker"] = self._read_tickers(normalized["Ticker"])
-        duplicate_tickers = (
-            normalized["Ticker"].dropna().astype(str).value_counts().loc[lambda values: values > 1]
-        )
-        if not duplicate_tickers.empty:
-            raise ValueError(
-                "BQL sheet 'Name' contains duplicated tickers: "
-                f"{duplicate_tickers.index.tolist()}"
-            )
+        self._ensure_unique_tickers(normalized["Ticker"], _NAME_SHEET)
 
         return normalized
 
@@ -184,20 +175,24 @@ class BqlFileReader(BaseFileReader):
             ]
         ].copy()
         normalized["Ticker"] = self._read_tickers(normalized["Ticker"])
-        duplicate_tickers = (
-            normalized["Ticker"].dropna().astype(str).value_counts().loc[lambda values: values > 1]
-        )
-        if not duplicate_tickers.empty:
-            raise ValueError(
-                "BQL sheet 'Classification' contains duplicated tickers: "
-                f"{duplicate_tickers.index.tolist()}"
-            )
+        self._ensure_unique_tickers(normalized["Ticker"], _CLASSIFICATION_SHEET)
 
         return normalized
 
     def _read_tickers(self, identifiers: pd.Series) -> pd.Series:
         """Reduce Bloomberg identifiers to tickers, leaving empty cells as NA."""
         return identifiers.map(ticker_from_bloomberg_id).replace("", pd.NA)
+
+    def _ensure_unique_tickers(self, tickers: pd.Series, sheet_name: str) -> None:
+        """Reject a sheet that reports a ticker twice, whichever sheet it comes from."""
+        duplicate_tickers = (
+            tickers.dropna().astype(str).value_counts().loc[lambda values: values > 1]
+        )
+        if not duplicate_tickers.empty:
+            raise ValueError(
+                f"BQL sheet '{sheet_name}' contains duplicated tickers: "
+                f"{duplicate_tickers.index.tolist()}"
+            )
 
     def _resolve_column(
         self,

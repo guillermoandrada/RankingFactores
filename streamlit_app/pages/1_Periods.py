@@ -22,6 +22,7 @@ _VARIABLE_READER = "bloomberg_individual_variable"
 _READER_LABELS = {
     "bloomberg": "Bloomberg",
     "bql": "BQL",
+    "bql_dated": "BQL (dated Estimated)",
     "reuters_metrics": "Reuters Metrics",
     _VARIABLE_READER: "Bloomberg Individual Variable",
 }
@@ -394,7 +395,7 @@ with tabs[0]:
 
     reader = st.selectbox(
         "Reader",
-        options=["bloomberg", "bql", "reuters_metrics", _VARIABLE_READER],
+        options=["bloomberg", "bql", "bql_dated", "reuters_metrics", _VARIABLE_READER],
         key="period_create_reader",
         format_func=lambda value: _READER_LABELS[value],
     )
@@ -453,6 +454,13 @@ with tabs[0]:
             "read factors from `Current`, `Past`, and `Estimated`, infer the period from "
             "`Config!B1`, and infer the universe from `Config!B2`."
         )
+    elif reader == "bql_dated":
+        st.caption(
+            "Same workbook as BQL, for downloads where `Estimated` comes back as a dated "
+            "matrix: a `DATES` column plus one column block per ticker, because `fill=prev` "
+            "returned the last value reported before the requested date. Only values reported "
+            "on `Config!B1` are imported; anything carried over from an earlier date is read as NA."
+        )
     elif reader == _VARIABLE_READER:
         st.markdown(
             "One variable observed at several periods. **Row 1** = index name (A1) and period "
@@ -486,7 +494,7 @@ with tabs[0]:
             key="period_variable_sheet",
             help="Leave empty to read the first sheet. The sheet name becomes the metric name.",
         )
-    elif reader in ("bloomberg", "bql"):
+    elif reader in ("bloomberg", "bql", "bql_dated"):
         upload_behavior = st.selectbox(
             "If period exists",
             options=["replace", "append"],

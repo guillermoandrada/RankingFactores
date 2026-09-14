@@ -14,6 +14,9 @@ from modules.infrastructure.db import FinancialDatabase
 from modules.infrastructure.ingestion.file_reader import FileReader
 from modules.domain.models import ImportResult
 
+# Both BQL readers produce the same frame, so they need the same database metadata.
+_BQL_READERS = ("bql", "bql_dated")
+
 
 class DataImporter:
     """
@@ -42,7 +45,8 @@ class DataImporter:
         Import a single file into the database.
         Returns ImportResult with counts.
         period_override: use instead of extracting from file.
-        reader: concrete reader name such as 'bloomberg' or 'reuters_metrics'.
+        reader: concrete reader name such as 'bloomberg', 'bql', 'bql_dated'
+            or 'reuters_metrics'.
         if_period_exists: 'replace' (overwrite) or 'append' (merge new metrics/securities).
         """
         if not os.path.exists(filepath):
@@ -59,7 +63,7 @@ class DataImporter:
                 f"Could not determine period for reader '{reader}'. "
                 "Provide a period manually."
             )
-        if reader == "bql":
+        if reader in _BQL_READERS:
             df = self._enrich_bql_dataframe(df, period)
 
         self._validate_columns(df)
