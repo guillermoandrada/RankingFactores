@@ -200,3 +200,52 @@ def test_backtest_service_warns_about_partial_price_coverage() -> None:
 
     assert any("does not span the full window" in warning for warning in result["warnings"])
     assert any("AAA" in warning for warning in result["warnings"])
+
+
+def _two_window_request() -> StrategyBacktestBody:
+    return StrategyBacktestBody(
+        portfolio_request=PortfolioBuildBody(scoring_profile="quality"),
+        schedule=[
+            {"period": "2024 Q1", "start_date": date(2024, 1, 1), "end_date": date(2024, 1, 2)},
+            {"period": "2024 Q2", "start_date": date(2024, 1, 3), "end_date": date(2024, 1, 3)},
+        ],
+    )
+
+
+def test_backtest_service_strategy_flags_metrics_missing_above_threshold() -> None:
+    """Only (period, metric) pairs strictly above 30% missing are reported."""
+    coverage = {
+        "2024 Q1": {"universe_size": 10, "missing_counts": {"P/E": 3, "ROE": 0}},
+        "2024 Q2": {"universe_size": 10, "missing_counts": {"P/E": 10, "ROE": 4}},
+    }
+    service = BacktestService(
+        portfolio_service=FakePortfolioService(),
+        price_provider=FakePriceProvider(),
+        coverage_fn=lambda period, _request: coverage[period],
+    )
+
+    report = service.backtest_strategy(_two_window_request())["data_coverage"]
+
+    assert report["threshold"] == pytest.approx(0.30)
+    assert [(i["period"], i["metric"], i["missing_share"]) for i in report["issues"]] == [
+        ("2024 Q2", "P/E", 1.0),
+        ("2024 Q2", "ROE", 0.4),
+    ]
+    assert report["errors"] == []
+
+
+def test_backtest_service_strategy_coverage_failure_does_not_fail_backtest() -> None:
+    def broken(period: str, _request) -> dict:
+        raise ValueError("no data")
+
+    service = BacktestService(
+        portfolio_service=FakePortfolioService(),
+        price_provider=FakePriceProvider(),
+        coverage_fn=broken,
+    )
+
+    result = service.backtest_strategy(_two_window_request())
+
+    assert result["summary"]["ending_value"] is not None
+    assert result["data_coverage"]["issues"] == []
+    assert result["data_coverage"]["errors"] == ["2024 Q1: no data", "2024 Q2: no data"]

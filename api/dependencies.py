@@ -83,9 +83,21 @@ def get_price_service():
 def get_backtest_service() -> BacktestService:
     from api.services.backtest_service import BacktestService
 
+    from api.services.ranking_service import compute_metric_coverage
+
+    def coverage_fn(period: str, portfolio_request) -> dict:
+        return compute_metric_coverage(
+            quarter=period,
+            industry=portfolio_request.industry,
+            sector=portfolio_request.sector,
+            index=portfolio_request.index,
+            scoring_profile=portfolio_request.scoring_profile,
+        )
+
     return BacktestService(
         portfolio_service=get_portfolio_service(),
         price_provider=get_price_provider(),
+        coverage_fn=coverage_fn,
     )
 
 

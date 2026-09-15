@@ -169,6 +169,37 @@ def _render_backtest_chart(series_df: pd.DataFrame) -> None:
     st.altair_chart(chart, width="stretch")
 
 
+def _render_data_coverage_warning(backtest_result: dict[str, Any]) -> None:
+    """Warn about periods where a profile metric is missing for too many companies."""
+    coverage = backtest_result.get("data_coverage") or {}
+    issues = coverage.get("issues") or []
+    threshold = float(coverage.get("threshold") or 0.30)
+    for error in coverage.get("errors") or []:
+        st.caption(f"Data coverage check failed for {error}")
+    if not issues:
+        return
+
+    by_period: dict[str, list[str]] = {}
+    for issue in issues:
+        by_period.setdefault(str(issue.get("period")), []).append(
+            f"{issue.get('metric')} ({float(issue.get('missing_share') or 0):.0%})"
+        )
+    lines = [
+        f"- **{period}**: " + ", ".join(metrics)
+        for period, metrics in sorted(by_period.items())
+    ]
+    st.warning(
+        f"Metrics missing for more than {threshold:.0%} of companies. "
+        "Scores in these periods are unreliable (a fully missing metric scores 0 for every company).\n\n"
+        + "\n".join(lines)
+    )
+    with st.expander("Data coverage details"):
+        issues_df = pd.DataFrame(issues)
+        if "missing_share" in issues_df.columns:
+            issues_df["missing_share"] = issues_df["missing_share"].map(lambda v: f"{v:.1%}")
+        st.dataframe(issues_df, width="stretch", hide_index=True)
+
+
 def _render_backtest_result(backtest_result: dict[str, Any]) -> None:
     summary = backtest_result.get("summary", {})
     metrics_cols = st.columns(4)
@@ -719,6 +750,7 @@ strategy_backtest_result = st.session_state.get("strategy_backtest_result")
 if strategy_backtest_result:
     st.divider()
     st.subheader("Strategy backtest result")
+    _render_data_coverage_warning(strategy_backtest_result)
     _render_backtest_result(strategy_backtest_result)
 
     intervals_df = pd.DataFrame(strategy_backtest_result.get("intervals", []))

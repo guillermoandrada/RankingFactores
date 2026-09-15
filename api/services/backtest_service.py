@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
@@ -24,6 +24,12 @@ from modules.shared.tickers import canonical_ticker
 from api.services.portfolio_service import PortfolioService
 
 
+MISSING_METRIC_THRESHOLD = 0.30
+
+# (period, portfolio_request) -> {"universe_size": int, "missing_counts": {metric: int}}
+CoverageFn = Callable[[str, Any], dict[str, Any]]
+
+
 class BacktestService:
     """Run portfolio and strategy backtests from portfolio weights."""
 
@@ -32,9 +38,13 @@ class BacktestService:
         *,
         portfolio_service: PortfolioService,
         price_provider: BasePriceProvider,
+        coverage_fn: CoverageFn | None = None,
+        missing_threshold: float = MISSING_METRIC_THRESHOLD,
     ) -> None:
         self._portfolio_service = portfolio_service
         self._price_provider = price_provider
+        self._coverage_fn = coverage_fn
+        self._missing_threshold = float(missing_threshold)
 
     def backtest_portfolio(self, request: PortfolioBacktestBody) -> dict[str, Any]:
         result, _ = self._run_single_backtest(
@@ -118,7 +128,47 @@ class BacktestService:
             "warnings": all_warnings,
             "intervals": interval_payloads,
             "series": serialize_series(combined_frame),
+            "data_coverage": self._check_data_coverage(windows, request),
         }
+
+    def _check_data_coverage(
+        self,
+        windows: list[StrategyBacktestWindow],
+        request: StrategyBacktestBody,
+    ) -> dict[str, Any]:
+        """
+        Flag (period, metric) pairs missing for more than the threshold share of the
+        ranked universe. Diagnostic only: a failure here never fails the backtest.
+        """
+        report: dict[str, Any] = {
+            "threshold": self._missing_threshold,
+            "issues": [],
+            "errors": [],
+        }
+        if self._coverage_fn is None:
+            return report
+        for period in sorted({window.period for window in windows}):
+            try:
+                coverage = self._coverage_fn(period, request.portfolio_request)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                report["errors"].append(f"{period}: {exc}")
+                continue
+            universe = int(coverage.get("universe_size") or 0)
+            if universe <= 0:
+                continue
+            for metric, missing in sorted((coverage.get("missing_counts") or {}).items()):
+                share = int(missing) / universe
+                if share > self._missing_threshold:
+                    report["issues"].append(
+                        {
+                            "period": period,
+                            "metric": metric,
+                            "missing_count": int(missing),
+                            "universe_size": universe,
+                            "missing_share": round(share, 4),
+                        }
+                    )
+        return report
 
     def _run_single_backtest(
         self,

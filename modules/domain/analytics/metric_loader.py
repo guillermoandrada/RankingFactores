@@ -215,9 +215,19 @@ def fetch_metric_matrix(
         if val in NA_HANDLING_OPTIONS:
             na_handling_map[name] = val
 
+    # Coverage is measured on the raw universe, before NA handling fills or drops rows.
+    universe_size = int(len(df_wide))
+    missing_counts = {
+        name: int(pd.to_numeric(df_wide[name], errors="coerce").isna().sum())
+        for name in all_to_fetch
+        if name in df_wide.columns
+    }
+
     # Apply per-metric NA handling (eliminate drops rows, others fill)
     df_wide = _apply_na_handling(df_wide, na_handling_map, all_to_fetch)
     df_wide.attrs["missing_metrics"] = sorted(missing_metrics)
+    df_wide.attrs["universe_size"] = universe_size
+    df_wide.attrs["missing_counts"] = missing_counts
 
     return df_wide, direction_map
 
