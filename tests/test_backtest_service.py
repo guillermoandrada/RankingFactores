@@ -3,6 +3,7 @@
 from datetime import date
 
 import pandas as pd
+import pytest
 
 from api.schemas.backtests import PortfolioBacktestBody, StrategyBacktestBody
 from api.schemas.portfolios import PortfolioBuildBody
@@ -126,6 +127,48 @@ def test_backtest_service_strategy_stitches_period_windows() -> None:
     assert result["intervals"][1]["components"][0]["ticker"] == "BBB"
     assert result["summary"]["ending_value"] is not None
     assert len(result["series"]) == 3
+
+
+def test_backtest_service_strategy_names_the_window_that_failed() -> None:
+    """A schedule has several windows, so the period that broke must be in the message."""
+
+    class FailingPortfolioService(FakePortfolioService):
+        def construct_portfolio(self, period: str, request: PortfolioBuildBody) -> dict:
+            if period == "2024 Q2":
+                raise ValueError("No data found for the given period, metrics, and filters.")
+            return super().construct_portfolio(period, request)
+
+    service = BacktestService(
+        portfolio_service=FailingPortfolioService(),
+        price_provider=FakePriceProvider(),
+    )
+    request = StrategyBacktestBody(
+        portfolio_request=PortfolioBuildBody(
+            scoring_profile="quality",
+            strategy="legacy_rebalance",
+            construction_mode="new_portfolio",
+        ),
+        schedule=[
+            {
+                "period": "2024 Q1",
+                "start_date": date(2024, 1, 1),
+                "end_date": date(2024, 1, 2),
+            },
+            {
+                "period": "2024 Q2",
+                "start_date": date(2024, 1, 3),
+                "end_date": date(2024, 1, 3),
+            },
+        ],
+    )
+
+    with pytest.raises(ValueError) as failure:
+        service.backtest_strategy(request)
+
+    message = str(failure.value)
+    assert "2024 Q2" in message
+    assert "2024-01-03" in message
+    assert "No data found for the given period, metrics, and filters." in message
 
 
 def test_backtest_service_warns_about_partial_price_coverage() -> None:

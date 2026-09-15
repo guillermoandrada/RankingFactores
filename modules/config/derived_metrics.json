@@ -388,11 +388,37 @@
       "higher_is_better": true,
       "na_handling": "replace_with_zero"
     },
+    "FCF Yield Change": {
+      "metric_names": [
+        "Current FCF Yield",
+        "Past FCF Yield",
+        "Past FCF Yield"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
     "FCFF Yield Trend": {
       "metric_names": [
         "Estimated FCFF Yield",
         "Current FCFF Yield",
         "Current FCFF Yield"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "FCF Yield Trend": {
+      "metric_names": [
+        "Estimated FCF Yield",
+        "Current FCF Yield",
+        "Current FCF Yield"
       ],
       "operations": [
         "-",

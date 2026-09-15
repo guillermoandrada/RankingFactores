@@ -13,9 +13,9 @@
             "Current EV / EBITDA": 0.25,
             "EV/EBITDA Change": 0.125,
             "EV/EBITDA Trend": 0.125,
-            "Current FCFF Yield": 0.0625,
-            "FCFF Yield Change": 0.03125,
-            "FCFF Yield Trend": 0.03125
+            "Current FCF Yield": 0.0625,
+            "FCF Yield Change": 0.03125,
+            "FCF Yield Trend": 0.03125
           },
           "method": "linear"
         }

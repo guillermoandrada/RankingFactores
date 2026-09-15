@@ -6,7 +6,11 @@ from typing import Any
 
 import pandas as pd
 
-from api.schemas.backtests import PortfolioBacktestBody, StrategyBacktestBody
+from api.schemas.backtests import (
+    PortfolioBacktestBody,
+    StrategyBacktestBody,
+    StrategyBacktestWindow,
+)
 from modules.domain.backtesting import (
     BacktestInterval,
     build_portfolio_time_series,
@@ -56,10 +60,7 @@ class BacktestService:
 
         for window in windows:
             interval_starting_value = running_value
-            portfolio_result = self._portfolio_service.construct_portfolio(
-                window.period,
-                request.portfolio_request,
-            )
+            portfolio_result = self._construct_window_portfolio(window, request)
             interval_result, interval_frame = self._run_single_backtest(
                 portfolio_rows=portfolio_result.get("portfolio", []),
                 start_date=window.start_date.isoformat(),
@@ -299,6 +300,24 @@ class BacktestService:
     @staticmethod
     def _empty_price_result() -> PriceMatrixResult:
         return PriceMatrixResult(prices=pd.DataFrame())
+
+    def _construct_window_portfolio(
+        self,
+        window: StrategyBacktestWindow,
+        request: StrategyBacktestBody,
+    ) -> dict[str, Any]:
+        """Name the window a failed rebalance belongs to: a schedule has several."""
+        try:
+            return self._portfolio_service.construct_portfolio(
+                window.period,
+                request.portfolio_request,
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"Window {window.period} "
+                f"({window.start_date.isoformat()} to {window.end_date.isoformat()}) "
+                f"could not be rebuilt: {exc}"
+            ) from exc
 
     @staticmethod
     def _stitch_frames(frames: list[pd.DataFrame]) -> pd.DataFrame:
