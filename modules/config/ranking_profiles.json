@@ -83,6 +83,42 @@
       },
       "winsor_mode": "quantile",
       "method": "linear"
+    },
+    "Asset growth": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current Total Assets Growth": 0.7,
+            "Past Total Assets Growth": 0.3
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "linear"
+    },
+    "FCF net income": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Past FCF/Net Income": 0.3,
+            "Current FCF/Net Income": 0.7
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "linear"
     }
   }
 }
