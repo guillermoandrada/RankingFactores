@@ -5,6 +5,12 @@ from urllib.parse import quote
 
 import httpx
 
+DEFAULT_TIMEOUT_SECONDS = 30.0
+# IC and backtests fetch prices for the whole universe, once per forward window. With
+# little cached price history the provider is slow and rate-limits, so a wide run is
+# measured in tens of minutes rather than minutes. Overridable per client for probes.
+DEFAULT_LONG_TIMEOUT_SECONDS = 3600.0
+
 # Reused across Streamlit reruns (same process) to avoid new TCP/TLS per request.
 _HTTP_CLIENTS: dict[tuple[str, float], httpx.Client] = {}
 
@@ -43,8 +49,8 @@ class RankingApiClient:
     def __init__(
         self,
         base_url: str,
-        timeout_seconds: float = 30.0,
-        long_timeout_seconds: float = 600.0,
+        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        long_timeout_seconds: float = DEFAULT_LONG_TIMEOUT_SECONDS,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
@@ -66,7 +72,8 @@ class RankingApiClient:
             raise ApiError(
                 f"{method} {path} timed out after {_read_timeout(client):.0f}s. "
                 "The server may still be finishing the request — check the result "
-                "before retrying."
+                "before retrying. Runs that fetch prices are slowest when the price "
+                "cache is empty: upload prices or narrow the periods to cut the work."
             ) from exc
         except httpx.HTTPError as exc:
             raise ApiError(f"{method} {path} could not reach the API: {exc}") from exc

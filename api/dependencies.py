@@ -83,9 +83,21 @@ def get_price_service():
 def get_backtest_service() -> BacktestService:
     from api.services.backtest_service import BacktestService
 
+    from api.services.ranking_service import compute_metric_coverage
+
+    def coverage_fn(period: str, portfolio_request) -> dict:
+        return compute_metric_coverage(
+            quarter=period,
+            industry=portfolio_request.industry,
+            sector=portfolio_request.sector,
+            index=portfolio_request.index,
+            scoring_profile=portfolio_request.scoring_profile,
+        )
+
     return BacktestService(
         portfolio_service=get_portfolio_service(),
         price_provider=get_price_provider(),
+        coverage_fn=coverage_fn,
     )
 
 
@@ -98,7 +110,11 @@ def get_zscore_calculator() -> ZScoreCalculator:
 def get_ic_service() -> ICService:
     from api.services.ic_service import ICService
 
-    return ICService(db=get_db(), price_provider=get_price_provider())
+    return ICService(
+        db=get_db(),
+        price_provider=get_price_provider(),
+        derived_store=get_derived_store(),
+    )
 
 
 def invalidate_fundamentals_caches() -> None:
@@ -108,6 +124,28 @@ def invalidate_fundamentals_caches() -> None:
     IC results are memoised per argument set for the life of the process, so anything
     that writes or deletes fundamentals must clear them. Without this an identical IC
     request replays pre-import numbers and looks freshly computed.
+    """
+    get_ic_service().invalidate_cache()
+
+
+def invalidate_price_caches() -> None:
+    """
+    Drop caches derived from price data.
+
+    IC memoises the forward returns it fetched, so uploading or deleting prices must
+    clear them. Without this an IC run keeps using the prices of the previous upload,
+    including the gaps that upload was meant to fill.
+    """
+    get_ic_service().invalidate_cache()
+
+
+def invalidate_derived_metric_caches() -> None:
+    """
+    Drop caches derived from derived metric formulas.
+
+    IC results are memoised per argument set, and a formula now feeds them directly, so
+    creating, editing, or deleting one must clear them. Without this an IC run on an
+    edited formula replays the numbers of the previous definition.
     """
     get_ic_service().invalidate_cache()
 

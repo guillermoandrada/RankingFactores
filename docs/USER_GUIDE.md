@@ -291,6 +291,13 @@ This page answers two questions: *does this metric predict returns?* and *am I d
 Select **at least two** metrics, choose a **Forward horizon** (1, 3 or 6 months), click
 **Run IC analysis**. This fetches prices and can take a while.
 
+**Derived metrics are selectable here too.** They are listed with their formula (for example
+*P/E Change · derived: Current P/E Ratio - Past P/E Ratio / Past P/E Ratio*) and are computed
+period by period from their base metrics, with the same definition rankings and backtests use. A
+derived metric is only available in periods where **every** base metric it depends on has values,
+so its *Available periods* count can be lower than its inputs'. NA handling is not applied in IC:
+the rank correlation is measured on the values that exist, rather than on filled-in ones.
+
 ### How the calculation works
 
 For each period, the app takes the cross-section of securities, ranks them by the metric, ranks them by
@@ -307,7 +314,8 @@ periods gives a time series of ICs, summarised as:
 | **Periods (T)** | How many periods contributed | **With T = 1 or 2 these numbers mean nothing.** |
 
 Sign matters: a **negative** mean IC means high values of the metric preceded *low* returns. That is
-still information — flip *Higher is better* (§5) rather than discarding the metric.
+still information — flip *Higher is better* (§5) rather than discarding the metric. Section C offers
+the one-click flip for DB metrics and derived metrics alike.
 
 ### Section B — inter-factor correlation
 

@@ -13,10 +13,14 @@ class _CountingAnalyzer:
 
     def __init__(self) -> None:
         self.calls = 0
+        self.cleared = 0
 
     def analyze_multivariate(self, *, metric_names, forward_months, periods):
         self.calls += 1
         return {"predictive": [], "calls": self.calls}
+
+    def clear_caches(self) -> None:
+        self.cleared += 1
 
 
 @pytest.fixture
@@ -77,6 +81,46 @@ def test_importing_fundamentals_invalidates_ic_results(monkeypatch) -> None:
     assert cleared == [True]
 
 
+def test_editing_a_derived_formula_invalidates_ic_results(monkeypatch) -> None:
+    """Derived metrics feed IC directly, so a changed formula must not replay old numbers."""
+    from api import dependencies
+
+    cleared: list[bool] = []
+
+    class _Spy:
+        def invalidate_cache(self) -> None:
+            cleared.append(True)
+
+    monkeypatch.setattr(dependencies, "get_ic_service", lambda: _Spy())
+    dependencies.invalidate_derived_metric_caches()
+
+    assert cleared == [True]
+
+
+def test_invalidating_also_drops_the_memoised_forward_returns(service_and_analyzer) -> None:
+    """Results and the prices they came from are one cache: half-fresh is still stale."""
+    service, analyzer = service_and_analyzer
+    _run(service)
+    service.invalidate_cache()
+
+    assert analyzer.cleared == 1
+
+
+def test_uploading_prices_invalidates_ic_results(monkeypatch) -> None:
+    from api import dependencies
+
+    cleared: list[bool] = []
+
+    class _Spy:
+        def invalidate_cache(self) -> None:
+            cleared.append(True)
+
+    monkeypatch.setattr(dependencies, "get_ic_service", lambda: _Spy())
+    dependencies.invalidate_price_caches()
+
+    assert cleared == [True]
+
+
 def test_writing_prices_invalidates_ic_results(monkeypatch) -> None:
     """IC forward returns come from the price matrix, so price writes invalidate too."""
     from api import dependencies
@@ -98,6 +142,8 @@ def test_writing_prices_invalidates_ic_results(monkeypatch) -> None:
     [
         ("api.routers.periods", "invalidate_fundamentals_caches"),
         ("api.routers.db_metrics", "invalidate_fundamentals_caches"),
+        ("api.routers.metrics", "invalidate_derived_metric_caches"),
+        ("api.routers.prices", "invalidate_price_caches"),
         ("api.routers.prices", "invalidate_price_caches"),
     ],
 )

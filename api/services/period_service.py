@@ -78,8 +78,10 @@ class PeriodService:
             raise ValueError("File must be .xlsx or .xls.")
         if if_period_exists not in ("replace", "append"):
             raise ValueError("if_period_exists must be 'replace' or 'append'.")
-        if reader not in ("bloomberg", "bql", "reuters_metrics", "auto"):
-            raise ValueError("reader must be 'bloomberg', 'bql', 'reuters_metrics', or 'auto'.")
+        if reader not in ("bloomberg", "bql", "bql_dated", "reuters_metrics", "auto"):
+            raise ValueError(
+                "reader must be 'bloomberg', 'bql', 'bql_dated', 'reuters_metrics', or 'auto'."
+            )
         if reader == "reuters_metrics" and not (period or "").strip():
             raise ValueError("period is required when reader='reuters_metrics'.")
 

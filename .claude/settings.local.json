@@ -16,7 +16,10 @@
       "Bash(python -c \"import streamlit_app.pages\")",
       "Bash(python -m py_compile streamlit_app/pages/2_Metrics.py streamlit_app/client/api_client.py api/routers/db_metrics.py api/services/db_metric_service.py)",
       "Bash(python -m py_compile streamlit_app/pages/2_Metrics.py)",
-      "Bash(python -m pytest tests/test_ticker_canonicalization.py -q)"
+      "Bash(python -m pytest tests/test_ticker_canonicalization.py -q)",
+      "PowerShell(Get-ChildItem -Directory | Where-Object { $_.Name -match 'venv' })",
+      "PowerShell(py *)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pip install --upgrade pip -q; .\\\\.venv\\\\Scripts\\\\python.exe -m pip install -r requirements.txt)"
     ]
   }
 }

@@ -28,7 +28,7 @@ async def create_period(
     file: UploadFile = File(...),
     reader: str = Query(
         default="bloomberg",
-        description="Reader name: 'bloomberg', 'bql', 'reuters_metrics', or 'auto'.",
+        description="Reader name: 'bloomberg', 'bql', 'bql_dated', 'reuters_metrics', or 'auto'.",
     ),
     if_period_exists: str = Query(
         default="replace",
@@ -52,10 +52,10 @@ async def create_period(
             status_code=400,
             detail="File must be .xlsx or .xls.",
         )
-    if reader not in ("bloomberg", "bql", "reuters_metrics", "auto"):
+    if reader not in ("bloomberg", "bql", "bql_dated", "reuters_metrics", "auto"):
         raise HTTPException(
             status_code=400,
-            detail="reader must be 'bloomberg', 'bql', 'reuters_metrics', or 'auto'.",
+            detail="reader must be 'bloomberg', 'bql', 'bql_dated', 'reuters_metrics', or 'auto'.",
         )
     if if_period_exists not in ("replace", "append"):
         raise HTTPException(
@@ -96,7 +96,7 @@ async def preview_period_file(
     file: UploadFile = File(...),
     reader: str = Query(
         default="bloomberg",
-        description="Reader name: 'bloomberg', 'bql', 'reuters_metrics', or 'auto'.",
+        description="Reader name: 'bloomberg', 'bql', 'bql_dated', 'reuters_metrics', or 'auto'.",
     ),
     if_period_exists: str = Query(
         default="replace",

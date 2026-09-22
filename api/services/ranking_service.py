@@ -4,8 +4,14 @@ import io
 
 import pandas as pd
 
-from api.dependencies import get_db, get_profile_resolver, get_zscore_calculator
+from api.dependencies import (
+    get_db,
+    get_derived_store,
+    get_profile_resolver,
+    get_zscore_calculator,
+)
 from modules.domain.analytics import FactorScoringService, RankingEngine
+from modules.domain.analytics.metric_loader import fetch_metric_matrix
 
 
 def get_metric_names_from_profile(profile: dict) -> list[str]:
@@ -102,6 +108,45 @@ def compute_ranking(
     df_ranked = _apply_display_labels(df_ranked)
     df_ranked.attrs["warnings"] = warnings
     return df_ranked
+
+
+def compute_metric_coverage(
+    *,
+    quarter: str,
+    industry: str = "",
+    sector: str = "",
+    index: str = "",
+    scoring_profile: str,
+) -> dict:
+    """
+    Raw missing-value counts for every metric a profile uses in one period.
+
+    Covers the profile's metrics and the base metrics their derived formulas read,
+    over the same universe the ranking uses, before any NA handling.
+    """
+    industry_filter = industry.strip() or None
+    sector_filter = sector.strip() or None
+    resolved_profile = get_profile_resolver().resolve(
+        scoring_profile=scoring_profile,
+        industry=industry_filter,
+        sector=sector_filter,
+    )
+    metric_names = get_metric_names_from_profile(resolved_profile)
+    if not metric_names:
+        return {"universe_size": 0, "missing_counts": {}}
+    df_wide, _ = fetch_metric_matrix(
+        engine=get_db().engine,
+        period=quarter,
+        metric_names=metric_names,
+        derived_store=get_derived_store(),
+        index_name=index.strip() or None,
+        industry_name=industry_filter,
+        sector_name=sector_filter,
+    )
+    return {
+        "universe_size": int(df_wide.attrs.get("universe_size", 0)),
+        "missing_counts": dict(df_wide.attrs.get("missing_counts", {})),
+    }
 
 
 def compute_ranking_for_profile(

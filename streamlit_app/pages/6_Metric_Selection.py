@@ -21,6 +21,9 @@ from streamlit_app.ui import (
 
 _IC_RESULT_KEY = "ic_analysis_result"
 _ALL_PERIODS_LABEL = "every period available per metric"
+# Below this absolute mean Rank IC the sign is treated as noise, not as evidence
+# that the stored direction flag is wrong.
+_DIRECTION_IC_THRESHOLD = 0.02
 _HEATMAP_CELL_PX = 46
 _HEATMAP_MIN_PX = 260
 _HEATMAP_MAX_PX = 900
@@ -49,6 +52,19 @@ def _correlation_dataframe(inter: dict[str, Any]) -> pd.DataFrame:
     if not labels or not matrix:
         return pd.DataFrame()
     return pd.DataFrame(matrix, index=labels, columns=labels)
+
+
+def _profile_metric_names(profile_data: dict[str, Any]) -> list[str]:
+    """Leaf metric names used anywhere in a scoring profile's node tree."""
+    nodes = profile_data.get("nodes") or {}
+    node_names = set(nodes.keys())
+    leaves: set[str] = set()
+    for node in nodes.values():
+        inputs = (node or {}).get("inputs") or {}
+        for child_name in inputs:
+            if child_name not in node_names:
+                leaves.add(str(child_name))
+    return sorted(leaves)
 
 
 def _periods_dataframe(periods_info: dict[str, Any]) -> pd.DataFrame:
@@ -183,6 +199,141 @@ def _render_inter_factor_section(inter: dict[str, Any]) -> None:
     )
 
 
+def _direction_verdict(mean_ic: float | None, higher_is_better: bool) -> str:
+    """
+    Classify one metric's IC sign against its stored direction flag.
+
+    Returns one of: "consistent", "contradiction", "inconclusive".
+    """
+    if mean_ic is None:
+        return "inconclusive"
+    if abs(mean_ic) < _DIRECTION_IC_THRESHOLD:
+        return "inconclusive"
+    ic_says_higher_is_better = mean_ic > 0
+    return "consistent" if ic_says_higher_is_better == higher_is_better else "contradiction"
+
+
+def _is_derived(metric: dict[str, Any] | None) -> bool:
+    """A derived metric is a JSON formula: it has no DB id, only a recipe."""
+    return bool(metric and metric.get("derived"))
+
+
+def _metric_label(metric_index: dict[str, dict[str, Any]], metric_name: str) -> str:
+    """Selection label; derived metrics carry their formula so the recipe is visible."""
+    metric = metric_index.get(metric_name)
+    if not _is_derived(metric):
+        return metric_name
+    return f"{metric_name}  ·  derived: {_formula_text(metric or {})}"
+
+
+def _formula_text(metric: dict[str, Any]) -> str:
+    """Render a derived metric's recipe, for example 'EBIT / EV'."""
+    inputs = [str(name) for name in metric.get("metric_names") or []]
+    operations = [str(op) for op in metric.get("operations") or []]
+    if not inputs:
+        return "?"
+    parts = [inputs[0]]
+    for index, operation in enumerate(operations):
+        if index + 1 < len(inputs):
+            parts.extend([operation, inputs[index + 1]])
+    return " ".join(parts)
+
+
+def _flip_metric_direction(client, metric: dict[str, Any], new_value: bool) -> None:
+    """Persist the inverted higher_is_better flag and refresh the page."""
+    metric_name = str(metric.get("metric_name", ""))
+    try:
+        if _is_derived(metric):
+            client.update_derived_metric(metric_name, higher_is_better=new_value)
+        else:
+            client.update_db_metric(int(metric["metric_id"]), higher_is_better=new_value)
+    except ApiError as exc:
+        st.error(f"Could not update '{metric_name}': {exc}")
+        return
+    direction = "higher is better" if new_value else "lower is better"
+    st.toast(f"'{metric_name}' flipped to {direction}.")
+    st.rerun()
+
+
+def _render_direction_check(
+    predictive: list[dict[str, Any]],
+    metric_index: dict[str, dict[str, Any]],
+    client,
+) -> None:
+    """
+    Section C: cross-check the IC sign against each metric's stored direction flag.
+
+    A strongly negative Mean Rank IC on a metric marked higher_is_better=True (or the
+    reverse) means the metric would score backwards in scoring profiles and backtests;
+    offer a one-click flip of the flag.
+    """
+    st.markdown("### Section C — Direction check (IC sign vs higher_is_better)")
+    st.caption(
+        "Scoring profiles use each metric's **higher_is_better** flag to orient its "
+        "z-score, while the Rank IC above is computed on raw values. When the IC sign "
+        "contradicts the stored flag, the metric contributes with the wrong sign in "
+        f"rankings and backtests. Contradictions require |Mean Rank IC| ≥ "
+        f"{_DIRECTION_IC_THRESHOLD:.2f}; weaker ICs are treated as inconclusive."
+    )
+    if not predictive:
+        st.info("No predictive IC results to check directions against.")
+        return
+
+    contradictions = 0
+    for item in predictive:
+        metric_name = item.get("metric_name", "")
+        mean_ic = item.get("mean_rank_ic")
+        metric = metric_index.get(metric_name)
+        stored_flag = metric.get("higher_is_better") if metric else None
+        # Scoring falls back to higher-is-better when the flag was never set.
+        effective_flag = True if stored_flag is None else bool(stored_flag)
+        verdict = _direction_verdict(mean_ic, effective_flag)
+
+        flag_label = "higher is better" if effective_flag else "lower is better"
+        if stored_flag is None:
+            flag_label += " (not set, scoring default)"
+        ic_label = "n/a" if mean_ic is None else f"{mean_ic:+.4f}"
+
+        name_col, ic_col, flag_col, action_col = st.columns([3, 2, 3, 3])
+        name_col.markdown(f"**{metric_name}**")
+        ic_col.markdown(f"Mean IC: `{ic_label}`")
+        flag_col.markdown(f"Flag: `{flag_label}`")
+
+        editable = metric is not None and (
+            _is_derived(metric) or metric.get("metric_id") is not None
+        )
+        if verdict == "contradiction" and editable:
+            contradictions += 1
+            new_value = not effective_flag
+            suggested = "higher is better" if new_value else "lower is better"
+            with action_col:
+                if st.button(
+                    f"Flip to '{suggested}'",
+                    key=f"ic_flip_direction_{metric_name}",
+                    help=(
+                        f"'{metric_name}' is marked '{flag_label}' but its Mean Rank IC "
+                        f"is {ic_label}: it is scoring backwards. Flip the flag so "
+                        "scoring matches the observed IC direction."
+                    ),
+                ):
+                    _flip_metric_direction(client, metric, new_value)
+        elif verdict == "contradiction":
+            action_col.markdown("⚠️ Contradiction (flag not editable here)")
+        elif verdict == "consistent":
+            action_col.markdown("✅ Consistent")
+        else:
+            action_col.markdown("➖ Inconclusive (weak IC)")
+
+    if contradictions:
+        st.warning(
+            f"{contradictions} metric(s) have an IC sign that contradicts their stored "
+            "higher_is_better flag. Until flipped, they contribute backwards to any "
+            "scoring profile and backtest that uses them."
+        )
+    else:
+        st.success("No direction contradictions between IC signs and stored flags.")
+
+
 def _render_export(result: dict[str, Any]) -> None:
     st.divider()
     with st.container(border=True):
@@ -197,7 +348,11 @@ def _render_export(result: dict[str, Any]) -> None:
         )
 
 
-def _render_ic_result(result: dict[str, Any]) -> None:
+def _render_ic_result(
+    result: dict[str, Any],
+    metric_index: dict[str, dict[str, Any]],
+    client,
+) -> None:
     for warning in result.get("warnings", []):
         st.warning(warning)
 
@@ -206,6 +361,8 @@ def _render_ic_result(result: dict[str, Any]) -> None:
     _render_predictive_section(result.get("predictive", []))
     st.divider()
     _render_inter_factor_section(result.get("inter_factor_correlation", {}))
+    st.divider()
+    _render_direction_check(result.get("predictive", []), metric_index, client)
     _render_export(result)
 
 
@@ -218,20 +375,60 @@ render_page_header(
 client = get_api_client()
 render_sidebar_api_status(client)
 
+# Both DB metrics and derived formulas: a derived metric is a factor like any other,
+# so it must be selectable here exactly as it is in scoring profiles.
 try:
-    db_metrics = client.list_db_metrics()
-    metric_names = sorted([m["metric_name"] for m in db_metrics if m.get("metric_name")])
+    all_metrics = client.list_metrics()
+    metric_names = sorted([m["metric_name"] for m in all_metrics if m.get("metric_name")])
 except ApiError as exc:
     st.error(f"Cannot load metrics: {exc}")
+    all_metrics = []
     metric_names = []
+
+metric_index = {m["metric_name"]: m for m in all_metrics if m.get("metric_name")}
+derived_count = sum(1 for m in all_metrics if _is_derived(m))
 
 try:
     available_periods = client.list_periods()
 except ApiError:
     available_periods = []
 
+try:
+    scoring_profiles = client.list_scoring_profiles()
+    scoring_profile_names = sorted(scoring_profiles.keys())
+except ApiError:
+    scoring_profiles = {}
+    scoring_profile_names = []
+
 with st.container(border=True):
     st.markdown("**Inputs**")
+
+    if scoring_profile_names:
+        profile_col, load_col = st.columns([3, 1])
+        with profile_col:
+            quick_select_profile = st.selectbox(
+                "Quick select from scoring profile",
+                options=scoring_profile_names,
+                key="ic_quick_select_profile",
+                help="Load the metrics used by an existing scoring profile into the selection below.",
+            )
+        with load_col:
+            st.write("")
+            if st.button("Load metrics", key="ic_quick_select_load_btn"):
+                profile_metrics = _profile_metric_names(scoring_profiles.get(quick_select_profile, {}))
+                usable = sorted(set(profile_metrics) & set(metric_names))
+                st.session_state["ic_metrics_multiselect"] = usable
+                missing = sorted(set(profile_metrics) - set(metric_names))
+                if missing:
+                    st.session_state["ic_quick_select_missing"] = missing
+                st.rerun()
+
+        quick_select_missing = st.session_state.pop("ic_quick_select_missing", None)
+        if quick_select_missing:
+            st.caption(
+                "Not loaded (not found among available metrics): " + ", ".join(quick_select_missing)
+            )
+
     metrics_column, horizon_column = st.columns([3, 2])
     with metrics_column:
         selected_metrics = st.multiselect(
@@ -239,8 +436,18 @@ with st.container(border=True):
             options=metric_names,
             default=[],
             key="ic_metrics_multiselect",
-            help="Select at least two metrics for multivariate analysis.",
+            format_func=lambda name: _metric_label(metric_index, name),
+            help=(
+                "Select at least two metrics for multivariate analysis. Derived metrics "
+                "are listed with their formula and are computed per period from their "
+                "base metrics, as in rankings and backtests."
+            ),
         )
+        if derived_count:
+            st.caption(
+                f"{derived_count} derived metric(s) available. A derived metric is usable "
+                "in the periods where every base metric it depends on has values."
+            )
     with horizon_column:
         forward_months = st.number_input(
             "Forward horizon (months)",
@@ -303,4 +510,4 @@ if stored_result is None:
 else:
     st.divider()
     render_result_caption(stored_result, current_inputs)
-    _render_ic_result(stored_result.payload)
+    _render_ic_result(stored_result.payload, metric_index, client)

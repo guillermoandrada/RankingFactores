@@ -9,6 +9,7 @@ import pandas as pd
 from modules.infrastructure.ingestion.readers import (
     BaseFileReader,
     BqlFileReader,
+    BqlDatedFileReader,
     BloombergFileReader,
     ReutersMetricsFileReader,
 )
@@ -24,6 +25,7 @@ class FileReader:
         else:
             self._readers = {
                 "bql": BqlFileReader(),
+                "bql_dated": BqlDatedFileReader(),
                 "bloomberg": BloombergFileReader(),
                 "reuters_metrics": ReutersMetricsFileReader(),
             }
@@ -50,7 +52,8 @@ class FileReader:
         return reader
 
     def _auto_detect_reader(self, filepath: str) -> BaseFileReader:
-        for name in ("reuters_metrics", "bql", self._default_reader_name):
+        # 'bql_dated' is tried first: 'bql' also accepts a dated workbook, but misreads it.
+        for name in ("reuters_metrics", "bql_dated", "bql", self._default_reader_name):
             reader = self._readers.get(name)
             if reader and reader.can_read(filepath):
                 return reader

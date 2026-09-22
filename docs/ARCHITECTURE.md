@@ -219,13 +219,23 @@ the frame, phase 1 finds every row and updates nothing (it only fills blank fiel
 skips every classification write, which is why no second write path is needed for the narrow form
 either.
 
+**Two BQL layouts, two readers.** `Estimated` normally arrives as a plain table, but a `fill=prev`
+download returns it as a dated matrix instead: a shared `DATES` column plus one column block per
+ticker, every value sitting on the row of the date Bloomberg actually reported it — which silently
+back-fills a period with older figures.
+[BqlDatedFileReader](../modules/infrastructure/ingestion/readers/bql_dated.py) subclasses
+`BqlFileReader` and overrides that one sheet, keeping only the row whose date equals `Config!B1` so
+carried-over values import as NA. `bql` accepts a dated workbook too (its sheets are all present) and
+misreads it, so auto-detection tries `bql_dated` first
+([file_reader.py](../modules/infrastructure/ingestion/file_reader.py)).
+
 **Intentional asymmetry in the UI.** Both entry points sit in the same **Periods → Create** tab, so
-the `Reader` dropdown there dispatches to two endpoints: `POST /periods` for the three period readers
+the `Reader` dropdown there dispatches to two endpoints: `POST /periods` for the four period readers
 and `POST /db-metrics` for `bloomberg_individual_variable`
 ([1_Periods.py](../streamlit_app/pages/1_Periods.py)). The endpoints stay separate because their
 responses are different shapes — one period envelope versus a per-period list — and overloading
 `POST /periods` with a multi-period response would break its contract. The dropdown is a UI
-affordance, not a claim that one endpoint serves all four readers.
+affordance, not a claim that one endpoint serves all five readers.
 
 **Price plane.** Excel → [BloombergPriceFileReader](../modules/infrastructure/ingestion/readers/bloomberg_prices.py)
 → `price_data`. Reads go through [HybridPriceProvider](../modules/infrastructure/market_data/providers/hybrid_provider.py),
@@ -311,6 +321,11 @@ Subclass [BaseFileReader](../modules/infrastructure/ingestion/readers/base.py), 
 [readers/__init__.py](../modules/infrastructure/ingestion/readers/__init__.py) and in the reader
 whitelist at [periods.py:55](../api/routers/periods.py#L55), add a period-import test mirroring
 [test_bql_period_import.py](../tests/test_bql_period_import.py).
+
+A vendor that returns the *same* workbook in a second layout is a subclass of the existing reader,
+not a new one: override the sheet that changed and leave the rest, as
+[bql_dated.py](../modules/infrastructure/ingestion/readers/bql_dated.py) does over `bql.py`. Register
+it before its parent in `_auto_detect_reader` whenever the parent would also accept the file.
 
 A file that is *not* one period of fundamentals does not belong to that interface. Copy
 [bloomberg_prices.py](../modules/infrastructure/ingestion/readers/bloomberg_prices.py) or
