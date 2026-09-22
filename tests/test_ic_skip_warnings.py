@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from modules.domain.analytics.ic_analyzer import ICAnalyzer, _summarise_periods
+from modules.domain.analytics.ic_analyzer import ICAnalyzer, MetricPlan, _summarise_periods
 
 
 class _StubAnalyzer(ICAnalyzer):
@@ -32,7 +32,9 @@ class _StubAnalyzer(ICAnalyzer):
 
 def _series(analyzer: _StubAnalyzer, periods=("2025/03/30",)):
     return analyzer._ic_series_for_metric(
-        metric_id=1, forward_months=3, periods=list(periods)
+        plan=MetricPlan(name="ROE", base_ids={"ROE": 1}),
+        forward_months=3,
+        periods=list(periods),
     )
 
 
@@ -100,7 +102,12 @@ def test_analysis_prefixes_warnings_with_the_metric_name(monkeypatch) -> None:
     """A multi-metric run must say which factor each warning belongs to."""
     analyzer = _StubAnalyzer(fundamentals=_VALUES, returns=pd.DataFrame())
     monkeypatch.setattr(
-        ICAnalyzer, "_resolve_metric_ids", lambda self, names, warnings: {"ROE": 1, "Debt": 2}
+        ICAnalyzer,
+        "_resolve_metric_plans",
+        lambda self, names, warnings: {
+            "ROE": MetricPlan(name="ROE", base_ids={"ROE": 1}),
+            "Debt": MetricPlan(name="Debt", base_ids={"Debt": 2}),
+        },
     )
     monkeypatch.setattr(
         ICAnalyzer, "_inter_factor_spearman_matrix", lambda self, **kwargs: [[1.0, 0.0], [0.0, 1.0]]

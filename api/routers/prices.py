@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 
-from api.dependencies import get_price_service
+from api.dependencies import get_price_service, invalidate_price_caches
 from api.services.price_service import PriceService
 
 router = APIRouter(prefix="/prices", tags=["prices"])
@@ -20,9 +20,11 @@ async def upload_price_file(
         raise HTTPException(status_code=400, detail="No file provided.")
     content = await file.read()
     try:
-        return service.ingest_from_file(content, file.filename)
+        result = service.ingest_from_file(content, file.filename)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    invalidate_price_caches()
+    return result
 
 
 @router.get("/latest")
@@ -54,6 +56,8 @@ async def delete_cached_tickers(
     if not tickers:
         raise HTTPException(status_code=400, detail="Provide at least one ticker.")
     try:
-        return service.delete_tickers(tickers)
+        result = service.delete_tickers(tickers)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    invalidate_price_caches()
+    return result

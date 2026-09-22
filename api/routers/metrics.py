@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from api.dependencies import get_metrics_service
+from api.dependencies import get_metrics_service, invalidate_derived_metric_caches
 from api.schemas.metrics import (
     DerivedMetricPutRequest,
     MetricPostRequest,
@@ -60,6 +60,7 @@ async def create_derived_metric(request: MetricPostRequest):
             higher_is_better=request.higher_is_better,
             na_handling=request.na_handling,
         )
+        invalidate_derived_metric_caches()
         return {"success": True, **result}
     except DuplicateMetricError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -113,6 +114,7 @@ async def update_derived_metric(metric_name: str, request: DerivedMetricPutReque
             higher_is_better=request.higher_is_better,
             na_handling=request.na_handling,
         )
+        invalidate_derived_metric_caches()
         return {"success": True, "metric_name": metric_name}
     except MetricNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -127,3 +129,4 @@ async def delete_derived_metric(metric_name: str):
         get_metrics_service().delete_derived_metric(metric_name)
     except MetricNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    invalidate_derived_metric_caches()

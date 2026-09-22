@@ -213,10 +213,40 @@ def _direction_verdict(mean_ic: float | None, higher_is_better: bool) -> str:
     return "consistent" if ic_says_higher_is_better == higher_is_better else "contradiction"
 
 
-def _flip_db_metric_direction(client, metric_id: int, metric_name: str, new_value: bool) -> None:
+def _is_derived(metric: dict[str, Any] | None) -> bool:
+    """A derived metric is a JSON formula: it has no DB id, only a recipe."""
+    return bool(metric and metric.get("derived"))
+
+
+def _metric_label(metric_index: dict[str, dict[str, Any]], metric_name: str) -> str:
+    """Selection label; derived metrics carry their formula so the recipe is visible."""
+    metric = metric_index.get(metric_name)
+    if not _is_derived(metric):
+        return metric_name
+    return f"{metric_name}  ·  derived: {_formula_text(metric or {})}"
+
+
+def _formula_text(metric: dict[str, Any]) -> str:
+    """Render a derived metric's recipe, for example 'EBIT / EV'."""
+    inputs = [str(name) for name in metric.get("metric_names") or []]
+    operations = [str(op) for op in metric.get("operations") or []]
+    if not inputs:
+        return "?"
+    parts = [inputs[0]]
+    for index, operation in enumerate(operations):
+        if index + 1 < len(inputs):
+            parts.extend([operation, inputs[index + 1]])
+    return " ".join(parts)
+
+
+def _flip_metric_direction(client, metric: dict[str, Any], new_value: bool) -> None:
     """Persist the inverted higher_is_better flag and refresh the page."""
+    metric_name = str(metric.get("metric_name", ""))
     try:
-        client.update_db_metric(metric_id, higher_is_better=new_value)
+        if _is_derived(metric):
+            client.update_derived_metric(metric_name, higher_is_better=new_value)
+        else:
+            client.update_db_metric(int(metric["metric_id"]), higher_is_better=new_value)
     except ApiError as exc:
         st.error(f"Could not update '{metric_name}': {exc}")
         return
@@ -227,7 +257,7 @@ def _flip_db_metric_direction(client, metric_id: int, metric_name: str, new_valu
 
 def _render_direction_check(
     predictive: list[dict[str, Any]],
-    db_metric_index: dict[str, dict[str, Any]],
+    metric_index: dict[str, dict[str, Any]],
     client,
 ) -> None:
     """
@@ -253,8 +283,8 @@ def _render_direction_check(
     for item in predictive:
         metric_name = item.get("metric_name", "")
         mean_ic = item.get("mean_rank_ic")
-        db_metric = db_metric_index.get(metric_name)
-        stored_flag = db_metric.get("higher_is_better") if db_metric else None
+        metric = metric_index.get(metric_name)
+        stored_flag = metric.get("higher_is_better") if metric else None
         # Scoring falls back to higher-is-better when the flag was never set.
         effective_flag = True if stored_flag is None else bool(stored_flag)
         verdict = _direction_verdict(mean_ic, effective_flag)
@@ -269,23 +299,24 @@ def _render_direction_check(
         ic_col.markdown(f"Mean IC: `{ic_label}`")
         flag_col.markdown(f"Flag: `{flag_label}`")
 
-        if verdict == "contradiction" and db_metric and db_metric.get("metric_id") is not None:
+        editable = metric is not None and (
+            _is_derived(metric) or metric.get("metric_id") is not None
+        )
+        if verdict == "contradiction" and editable:
             contradictions += 1
             new_value = not effective_flag
             suggested = "higher is better" if new_value else "lower is better"
             with action_col:
                 if st.button(
                     f"Flip to '{suggested}'",
-                    key=f"ic_flip_direction_{db_metric['metric_id']}",
+                    key=f"ic_flip_direction_{metric_name}",
                     help=(
                         f"'{metric_name}' is marked '{flag_label}' but its Mean Rank IC "
                         f"is {ic_label}: it is scoring backwards. Flip the flag so "
                         "scoring matches the observed IC direction."
                     ),
                 ):
-                    _flip_db_metric_direction(
-                        client, int(db_metric["metric_id"]), metric_name, new_value
-                    )
+                    _flip_metric_direction(client, metric, new_value)
         elif verdict == "contradiction":
             action_col.markdown("⚠️ Contradiction (flag not editable here)")
         elif verdict == "consistent":
@@ -319,7 +350,7 @@ def _render_export(result: dict[str, Any]) -> None:
 
 def _render_ic_result(
     result: dict[str, Any],
-    db_metric_index: dict[str, dict[str, Any]],
+    metric_index: dict[str, dict[str, Any]],
     client,
 ) -> None:
     for warning in result.get("warnings", []):
@@ -331,7 +362,7 @@ def _render_ic_result(
     st.divider()
     _render_inter_factor_section(result.get("inter_factor_correlation", {}))
     st.divider()
-    _render_direction_check(result.get("predictive", []), db_metric_index, client)
+    _render_direction_check(result.get("predictive", []), metric_index, client)
     _render_export(result)
 
 
@@ -344,15 +375,18 @@ render_page_header(
 client = get_api_client()
 render_sidebar_api_status(client)
 
+# Both DB metrics and derived formulas: a derived metric is a factor like any other,
+# so it must be selectable here exactly as it is in scoring profiles.
 try:
-    db_metrics = client.list_db_metrics()
-    metric_names = sorted([m["metric_name"] for m in db_metrics if m.get("metric_name")])
+    all_metrics = client.list_metrics()
+    metric_names = sorted([m["metric_name"] for m in all_metrics if m.get("metric_name")])
 except ApiError as exc:
     st.error(f"Cannot load metrics: {exc}")
-    db_metrics = []
+    all_metrics = []
     metric_names = []
 
-db_metric_index = {m["metric_name"]: m for m in db_metrics if m.get("metric_name")}
+metric_index = {m["metric_name"]: m for m in all_metrics if m.get("metric_name")}
+derived_count = sum(1 for m in all_metrics if _is_derived(m))
 
 try:
     available_periods = client.list_periods()
@@ -402,8 +436,18 @@ with st.container(border=True):
             options=metric_names,
             default=[],
             key="ic_metrics_multiselect",
-            help="Select at least two metrics for multivariate analysis.",
+            format_func=lambda name: _metric_label(metric_index, name),
+            help=(
+                "Select at least two metrics for multivariate analysis. Derived metrics "
+                "are listed with their formula and are computed per period from their "
+                "base metrics, as in rankings and backtests."
+            ),
         )
+        if derived_count:
+            st.caption(
+                f"{derived_count} derived metric(s) available. A derived metric is usable "
+                "in the periods where every base metric it depends on has values."
+            )
     with horizon_column:
         forward_months = st.number_input(
             "Forward horizon (months)",
@@ -466,4 +510,4 @@ if stored_result is None:
 else:
     st.divider()
     render_result_caption(stored_result, current_inputs)
-    _render_ic_result(stored_result.payload, db_metric_index, client)
+    _render_ic_result(stored_result.payload, metric_index, client)

@@ -6,7 +6,12 @@ import httpx
 import pytest
 
 import streamlit_app.client.api_client as api_client_module
-from streamlit_app.client.api_client import ApiError, RankingApiClient
+from streamlit_app.client.api_client import (
+    DEFAULT_LONG_TIMEOUT_SECONDS,
+    DEFAULT_TIMEOUT_SECONDS,
+    ApiError,
+    RankingApiClient,
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -34,8 +39,8 @@ def test_upload_variable_file_uses_the_long_timeout_client() -> None:
     """A 40-period file takes over a minute server-side; 30s would always time out."""
     client = RankingApiClient("http://testserver")
 
-    assert client._http.timeout.read == 30.0
-    assert client._http_long.timeout.read == 600.0
+    assert client._http.timeout.read == DEFAULT_TIMEOUT_SECONDS
+    assert client._http_long.timeout.read == DEFAULT_LONG_TIMEOUT_SECONDS
 
     used: list[float | None] = []
 
@@ -49,7 +54,7 @@ def test_upload_variable_file_uses_the_long_timeout_client() -> None:
 
     client.upload_variable_file(b"x", "v.xlsx")
 
-    assert used == [600.0]
+    assert used == [DEFAULT_LONG_TIMEOUT_SECONDS]
 
 
 def test_read_timeout_is_reported_as_a_handled_api_error() -> None:
@@ -64,7 +69,7 @@ def test_read_timeout_is_reported_as_a_handled_api_error() -> None:
         client.upload_variable_file(b"x", "v.xlsx")
 
     message = str(exc_info.value)
-    assert "timed out after 600s" in message
+    assert f"timed out after {DEFAULT_LONG_TIMEOUT_SECONDS:.0f}s" in message
     assert "may still be finishing" in message
 
 
@@ -126,4 +131,6 @@ def test_file_uploads_run_on_the_long_timeout_and_reads_do_not(call, expected_lo
 
     call(client)
 
-    assert observed == [600.0 if expected_long else 30.0]
+    assert observed == [
+        DEFAULT_LONG_TIMEOUT_SECONDS if expected_long else DEFAULT_TIMEOUT_SECONDS
+    ]

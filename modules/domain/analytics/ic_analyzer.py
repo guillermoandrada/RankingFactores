@@ -18,6 +18,11 @@ from scipy.stats import spearmanr
 from sqlalchemy import MetaData, and_, select
 from sqlalchemy.engine import Engine
 
+from modules.config.derived_metrics import DerivedMetricStore
+from modules.domain.analytics.metric_loader import (
+    compute_derived_series,
+    resolve_metric_dependencies,
+)
 from modules.infrastructure.db import FinancialDatabase
 from modules.infrastructure.market_data.providers.base import BasePriceProvider
 from modules.infrastructure.market_data.providers.yfinance_provider import YFinancePriceProvider
@@ -30,6 +35,34 @@ class ICPoint:
     end_date: str
     ic: float
     n: int
+
+
+@dataclass(frozen=True)
+class DerivedStep:
+    """One derived metric in a formula chain: inputs combined left-to-right."""
+
+    name: str
+    metric_names: tuple[str, ...]
+    operations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MetricPlan:
+    """
+    How one selected factor is materialised for a period cross-section.
+
+    A base metric resolves to a single DB metric id and no steps. A derived metric
+    resolves to every base metric its formula depends on, plus the derived steps in
+    dependency order, exactly as fetch_metric_matrix resolves them for rankings.
+    """
+
+    name: str
+    base_ids: dict[str, int]
+    steps: tuple[DerivedStep, ...] = ()
+
+    @property
+    def is_derived(self) -> bool:
+        return bool(self.steps)
 
 
 def _summarise_periods(periods: list[str], limit: int = 6) -> str:
@@ -55,6 +88,7 @@ class ICAnalyzer:
         *,
         engine: Optional[Engine] = None,
         price_service: Optional[BasePriceProvider] = None,
+        derived_store: Optional[DerivedMetricStore] = None,
         publication_lag_days: int = _DEFAULT_PUBLICATION_LAG_DAYS,
         logger: Optional[logging.Logger] = None,
     ) -> None:
@@ -63,14 +97,25 @@ class ICAnalyzer:
             engine = db.engine
         self._engine = engine
         self._price_service = price_service or YFinancePriceProvider()
+        self._derived_store = derived_store or DerivedMetricStore()
         self._publication_lag_days = int(publication_lag_days)
         self._logger = logger or logging.getLogger(__name__)
+        # Forward returns per window, shared by every metric in a run. See
+        # _compute_forward_returns for why this is the difference between a run
+        # finishing and a run timing out.
+        self._forward_returns: dict[tuple[str, str], pd.DataFrame] = {}
+        self._forward_returns_attempted: dict[tuple[str, str], set[str]] = {}
 
         self._metadata = MetaData()
         self._metadata.reflect(bind=self._engine)
         self._tbl_fund = self._metadata.tables["fundamental_values"]
         self._tbl_sec = self._metadata.tables["securities"]
         self._tbl_metrics = self._metadata.tables["metrics"]
+
+    def clear_caches(self) -> None:
+        """Drop memoised forward returns. Call whenever price data changes."""
+        self._forward_returns.clear()
+        self._forward_returns_attempted.clear()
 
     def analyze_multivariate(
         self,
@@ -89,7 +134,9 @@ class ICAnalyzer:
            averaged across periods.
 
         Args:
-            metric_names: DB metric names (at least two distinct names).
+            metric_names: Metric names (at least two distinct names). Derived metrics
+                are accepted and computed from their base metrics per period, exactly
+                as rankings compute them.
             forward_months: Forward horizon in months.
             periods: Optional filter; if None, periods are taken per metric / intersection
                 as described below.
@@ -116,23 +163,23 @@ class ICAnalyzer:
             raise ValueError("Select at least two distinct metric names.")
 
         warnings: list[str] = []
-        name_to_id = self._resolve_metric_ids(unique_names, warnings)
-        if len(name_to_id) < 2:
+        plans = self._resolve_metric_plans(unique_names, warnings)
+        if len(plans) < 2:
             raise ValueError("Could not resolve at least two valid metrics from the database.")
 
         predictive: list[dict] = []
         periods_per_metric: list[dict] = []
         for name in unique_names:
-            mid = name_to_id.get(name)
-            if mid is None:
+            plan = plans.get(name)
+            if plan is None:
                 continue
             if periods is None:
-                available_periods = self._list_periods_for_metric(mid)
+                available_periods = self._list_periods_for_plan(plan)
             else:
                 available_periods = sorted({p for p in periods if p})
             use_periods = available_periods
             points, w = self._ic_series_for_metric(
-                metric_id=mid,
+                plan=plan,
                 forward_months=forward_months,
                 periods=use_periods,
             )
@@ -175,16 +222,16 @@ class ICAnalyzer:
                 }
             )
 
-        inter_labels = [n for n in unique_names if n in name_to_id]
+        inter_labels = [n for n in unique_names if n in plans]
 
         if periods is None:
-            period_sets = [set(self._list_periods_for_metric(name_to_id[n])) for n in inter_labels]
+            period_sets = [set(self._list_periods_for_plan(plans[n])) for n in inter_labels]
             inter_available_periods = sorted(set.intersection(*period_sets) if period_sets else set())
         else:
             inter_available_periods = sorted({p for p in periods if p})
 
         inter_matrix = self._inter_factor_spearman_matrix(
-            name_to_id={n: name_to_id[n] for n in inter_labels},
+            plans={n: plans[n] for n in inter_labels},
             periods=periods,
             warnings=warnings,
         )
@@ -234,7 +281,7 @@ class ICAnalyzer:
         if periods is None:
             periods = self._list_periods_for_metric(metric_id)
         points, warnings = self._ic_series_for_metric(
-            metric_id=metric_id,
+            plan=self._plan_for_metric_id(metric_id),
             forward_months=forward_months,
             periods=periods,
         )
@@ -266,7 +313,7 @@ class ICAnalyzer:
     def _ic_series_for_metric(
         self,
         *,
-        metric_id: int,
+        plan: MetricPlan,
         forward_months: int,
         periods: Optional[Iterable[str]],
     ) -> tuple[list[ICPoint], list[str]]:
@@ -288,7 +335,7 @@ class ICAnalyzer:
                 skip(period, "the period label could not be parsed as a date")
                 continue
 
-            fundamentals = self._load_cross_section(metric_id=metric_id, period=period)
+            fundamentals = self._load_cross_section_for_plan(plan=plan, period=period)
             if fundamentals.empty:
                 skip(period, "the metric has no values in that period")
                 continue
@@ -344,17 +391,17 @@ class ICAnalyzer:
     def _inter_factor_spearman_matrix(
         self,
         *,
-        name_to_id: dict[str, int],
+        plans: dict[str, MetricPlan],
         periods: Optional[Iterable[str]],
         warnings: list[str],
     ) -> list[list[Optional[float]]]:
         """Average cross-sectional Spearman correlation matrices across periods (inner join on tickers)."""
-        labels = list(name_to_id.keys())
+        labels = list(plans.keys())
         if len(labels) < 2:
             return []
 
         if periods is None:
-            period_sets = [set(self._list_periods_for_metric(mid)) for mid in name_to_id.values()]
+            period_sets = [set(self._list_periods_for_plan(plan)) for plan in plans.values()]
             common = set.intersection(*period_sets) if period_sets else set()
             period_list = sorted(common)
         else:
@@ -366,7 +413,7 @@ class ICAnalyzer:
 
         matrices: list[np.ndarray] = []
         for period in period_list:
-            wide = self._load_wide_cross_section(name_to_id=name_to_id, period=period)
+            wide = self._load_wide_cross_section(plans=plans, period=period)
             if wide.shape[0] < 2:
                 continue
             sub = wide[labels].apply(pd.to_numeric, errors="coerce")
@@ -400,27 +447,61 @@ class ICAnalyzer:
             out.append(row)
         return out
 
-    def _resolve_metric_ids(self, names: list[str], warnings: list[str]) -> dict[str, int]:
-        tbl = self._tbl_metrics
-        out: dict[str, int] = {}
-        with self._engine.connect() as conn:
-            for name in names:
-                row = conn.execute(
-                    select(tbl.c.metric_id).where(tbl.c.metric_name == name)
-                ).first()
-                if row:
-                    out[name] = int(row[0])
-                else:
-                    warnings.append(f"Metric not found in database: '{name}'.")
-        return out
+    def _resolve_metric_plans(
+        self,
+        names: list[str],
+        warnings: list[str],
+    ) -> dict[str, MetricPlan]:
+        """
+        Turn selected metric names into cross-section plans.
 
-    def _load_wide_cross_section(self, *, name_to_id: dict[str, int], period: str) -> pd.DataFrame:
+        Base metrics map to their DB id; derived metrics map to every base metric their
+        formula depends on plus the derived steps, so a formula is analysed with the
+        same definition rankings and backtests use. Names that cannot be resolved are
+        reported as warnings and dropped, as unknown DB metrics always were.
+        """
+        db_ids = self._db_metric_ids()
+        formulas = self._derived_store.list_formulas()
+        base_names = set(db_ids)
+
+        plans: dict[str, MetricPlan] = {}
+        for name in names:
+            try:
+                order = resolve_metric_dependencies(name, formulas, base_names)
+            except ValueError as exc:
+                warnings.append(f"Metric not usable: {exc}")
+                continue
+            base_ids = {dep: db_ids[dep] for dep in order if dep in base_names}
+            if not base_ids:
+                warnings.append(f"Metric not found in database: '{name}'.")
+                continue
+            steps = tuple(
+                DerivedStep(
+                    name=dep,
+                    metric_names=tuple(formulas[dep].get("metric_names", [])),
+                    operations=tuple(formulas[dep].get("operations", [])),
+                )
+                for dep in order
+                if dep not in base_names
+            )
+            plans[name] = MetricPlan(name=name, base_ids=base_ids, steps=steps)
+        return plans
+
+    def _plan_for_metric_id(self, metric_id: int) -> MetricPlan:
+        """Plan for a single DB metric, for the id-based single-metric entry point."""
+        return MetricPlan(name=str(metric_id), base_ids={str(metric_id): int(metric_id)})
+
+    def _db_metric_ids(self) -> dict[str, int]:
+        tbl = self._tbl_metrics
+        with self._engine.connect() as conn:
+            rows = conn.execute(select(tbl.c.metric_name, tbl.c.metric_id)).fetchall()
+        return {str(row[0]): int(row[1]) for row in rows if row[0] is not None}
+
+    def _load_wide_cross_section(self, *, plans: dict[str, MetricPlan], period: str) -> pd.DataFrame:
         """Inner join all metrics on ticker; columns = metric names."""
-        labels = list(name_to_id.keys())
         merged: Optional[pd.DataFrame] = None
-        for name in labels:
-            mid = name_to_id[name]
-            df = self._load_cross_section(metric_id=mid, period=period)
+        for name, plan in plans.items():
+            df = self._load_cross_section_for_plan(plan=plan, period=period)
             if df.empty:
                 return pd.DataFrame()
             df = df.rename(columns={"value": name})
@@ -437,6 +518,49 @@ class ICAnalyzer:
         start = quarter_end + timedelta(days=self._publication_lag_days)
         end = self._add_months(start, int(forward_months))
         return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
+
+    def _list_periods_for_plan(self, plan: MetricPlan) -> list[str]:
+        """
+        Periods a plan can be evaluated in.
+
+        A derived metric only exists where every base metric it depends on has values,
+        so its availability is the intersection of its dependencies'.
+        """
+        period_sets = [set(self._list_periods_for_metric(mid)) for mid in plan.base_ids.values()]
+        return sorted(set.intersection(*period_sets)) if period_sets else []
+
+    def _load_cross_section_for_plan(self, *, plan: MetricPlan, period: str) -> pd.DataFrame:
+        """
+        Ticker/value cross-section for one metric, derived formulas included.
+
+        Base metrics are read straight from fundamental_values. Derived metrics are
+        computed from their base metrics on the shared cross-section, applying the
+        formula steps in dependency order. NA handling is deliberately not applied
+        here: IC drops non-numeric rows anyway, and filling them would change the
+        ranks the correlation is measured on.
+        """
+        if not plan.is_derived:
+            (metric_id,) = plan.base_ids.values()
+            return self._load_cross_section(metric_id=metric_id, period=period)
+
+        wide: Optional[pd.DataFrame] = None
+        for base_name, metric_id in plan.base_ids.items():
+            df = self._load_cross_section(metric_id=metric_id, period=period)
+            if df.empty:
+                return pd.DataFrame(columns=["ticker", "value"])
+            df = df[["ticker", "value"]].rename(columns={"value": base_name})
+            df[base_name] = pd.to_numeric(df[base_name], errors="coerce")
+            merged = df if wide is None else wide.merge(df, on="ticker", how="inner")
+            wide = merged
+        if wide is None or wide.empty:
+            return pd.DataFrame(columns=["ticker", "value"])
+
+        for step in plan.steps:
+            wide[step.name] = compute_derived_series(
+                wide, list(step.metric_names), list(step.operations)
+            )
+        values = pd.to_numeric(wide[plan.name], errors="coerce")
+        return pd.DataFrame({"ticker": wide["ticker"], "value": values}).dropna(subset=["value"])
 
     def _list_periods_for_metric(self, metric_id: int) -> list[str]:
         tbl = self._tbl_fund
@@ -468,6 +592,49 @@ class ICAnalyzer:
         start_date: str,
         end_date: str,
     ) -> pd.DataFrame:
+        """
+        Forward returns for one window, memoised per window across metrics.
+
+        Every metric in a run shares the same forward windows, so without this the same
+        price fetch is repeated once per metric per period. That is the dominant cost of
+        a run whenever prices are not cached locally: the provider is hit N times for
+        identical data, and a rate-limited or missing ticker pays its full retry cost
+        every time. Tickers are remembered as attempted even when they returned nothing,
+        so a gap is not re-fetched either.
+        """
+        clean_tickers = [t for t in (str(ticker or "").strip() for ticker in tickers) if t]
+        if not clean_tickers:
+            return pd.DataFrame(columns=["ticker", "forward_return"])
+
+        window = (start_date, end_date)
+        attempted = self._forward_returns_attempted.setdefault(window, set())
+        pending = [t for t in dict.fromkeys(clean_tickers) if t not in attempted]
+        if pending:
+            fetched = self._fetch_forward_returns(
+                tickers=pending, start_date=start_date, end_date=end_date
+            )
+            attempted.update(pending)
+            known = self._forward_returns.get(window)
+            self._forward_returns[window] = (
+                fetched
+                if known is None or known.empty
+                else pd.concat([known, fetched], ignore_index=True)
+            )
+
+        known = self._forward_returns.get(window)
+        if known is None or known.empty:
+            return pd.DataFrame(columns=["ticker", "forward_return"])
+        wanted = set(clean_tickers)
+        return known[known["ticker"].isin(wanted)].reset_index(drop=True)
+
+    def _fetch_forward_returns(
+        self,
+        *,
+        tickers: list[str],
+        start_date: str,
+        end_date: str,
+    ) -> pd.DataFrame:
+        """Geometric return per ticker over the window, straight from the price provider."""
         clean_tickers = [t for t in (str(ticker or "").strip() for ticker in tickers) if t]
         if not clean_tickers:
             return pd.DataFrame(columns=["ticker", "forward_return"])

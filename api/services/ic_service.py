@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from modules.config.derived_metrics import DerivedMetricStore
 from modules.domain.analytics.ic_analyzer import ICAnalyzer
 from modules.infrastructure.db import FinancialDatabase
 from modules.infrastructure.market_data.providers.base import BasePriceProvider
@@ -24,8 +25,15 @@ def _cached_analyze_multivariate(
 
 
 class ICService:
-    def __init__(self, db: FinancialDatabase, price_provider: BasePriceProvider | None = None) -> None:
-        self._analyzer = ICAnalyzer(db=db, price_service=price_provider)
+    def __init__(
+        self,
+        db: FinancialDatabase,
+        price_provider: BasePriceProvider | None = None,
+        derived_store: DerivedMetricStore | None = None,
+    ) -> None:
+        self._analyzer = ICAnalyzer(
+            db=db, price_service=price_provider, derived_store=derived_store
+        )
 
     def analyze(
         self,
@@ -42,5 +50,11 @@ class ICService:
         )
 
     def invalidate_cache(self) -> None:
-        """Clear the IC result cache (call after new period data is imported)."""
+        """
+        Clear every memoised IC input and result.
+
+        Both the analysed results and the forward returns they were computed from, so a
+        price upload or a new period cannot leave half of a run replaying old numbers.
+        """
         _cached_analyze_multivariate.cache_clear()
+        self._analyzer.clear_caches()

@@ -55,6 +55,34 @@
       },
       "winsor_mode": "quantile",
       "method": "softplus"
+    },
+    "Metric_weighting_value": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "EV/EBITDA": 0.08333333333333333,
+            "P/E Trend": 0.08333333333333333,
+            "P/B Trend": 0.08333333333333333,
+            "EV/EBITDA Trend": 0.08333333333333333,
+            "FCF Yield Trend": 0.08333333333333333,
+            "EV/EBITDA Change": 0.08333333333333333,
+            "P/B": 0.08333333333333333,
+            "P/B Change": 0.08333333333333333,
+            "P/E Change": 0.08333333333333333,
+            "P/E": 0.08333333333333333,
+            "FCF Yield Change": 0.08333333333333333,
+            "Current FCF Yield": 0.08333333333333333
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "linear"
     }
   }
 }

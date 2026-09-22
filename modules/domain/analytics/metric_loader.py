@@ -53,7 +53,7 @@ def _apply_na_handling(
     return out
 
 
-def _compute_derived(
+def compute_derived_series(
     df: pd.DataFrame,
     metric_names: list[str],
     operations: list[str],
@@ -97,6 +97,22 @@ def _resolve_dependencies(
     order.append(metric_name)
 
 
+def resolve_metric_dependencies(
+    metric_name: str,
+    formulas: dict[str, dict],
+    base_names: set[str],
+) -> list[str]:
+    """
+    Return every metric `metric_name` needs, in dependency order (base metrics first).
+
+    The last element is always `metric_name` itself. Raises ValueError on unknown
+    dependencies or circular references.
+    """
+    order: list[str] = []
+    _resolve_dependencies(metric_name, formulas, base_names, set(), order)
+    return order
+
+
 def validate_formula_graph(
     metric_name: str,
     formulas: dict[str, dict],
@@ -109,7 +125,7 @@ def validate_formula_graph(
     resolver that fetch_metric_matrix uses, so a formula that validates here is one a
     ranking can actually compute.
     """
-    _resolve_dependencies(metric_name, formulas, base_names, set(), [])
+    resolve_metric_dependencies(metric_name, formulas, base_names)
 
 
 def fetch_metric_matrix(
@@ -192,7 +208,7 @@ def fetch_metric_matrix(
             continue
         m_names = formula["metric_names"]
         ops = formula["operations"]
-        df_wide[name] = _compute_derived(df_wide, m_names, ops)
+        df_wide[name] = compute_derived_series(df_wide, m_names, ops)
         if pd.to_numeric(df_wide[name], errors="coerce").isna().all():
             missing_metrics.add(name)
         elif name in missing_metrics:
