@@ -7,8 +7,22 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
+DAILY_FREQUENCY = "daily"
 MONTHLY_FREQUENCY = "monthly"
 _MONTH_END_RULE = "ME"
+
+
+def to_period_end_bound(timestamp: pd.Timestamp, frequency: str) -> pd.Timestamp:
+    """
+    Snap a window bound onto the index convention of ``frequency``.
+
+    The counterpart of :func:`to_period_end` for the requested date range: a
+    monthly series resampled to month end cannot carry an observation on the
+    15th, so coverage of a window has to be judged in month-end terms too.
+    """
+    if frequency != MONTHLY_FREQUENCY:
+        return timestamp
+    return timestamp + pd.offsets.MonthEnd(0)
 
 
 @dataclass
@@ -30,7 +44,13 @@ class PriceMatrixResult:
 
 
 class BasePriceProvider(ABC):
-    """Read-only interface for historical price providers."""
+    """
+    Resolution interface for historical price providers.
+
+    The contract is a pure read from the caller's side. An implementation may
+    still write — the hybrid provider caches what it downloads — but only as a
+    side effect that never changes the result it returns.
+    """
 
     @property
     @abstractmethod

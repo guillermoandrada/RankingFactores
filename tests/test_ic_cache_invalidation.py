@@ -77,11 +77,28 @@ def test_importing_fundamentals_invalidates_ic_results(monkeypatch) -> None:
     assert cleared == [True]
 
 
+def test_writing_prices_invalidates_ic_results(monkeypatch) -> None:
+    """IC forward returns come from the price matrix, so price writes invalidate too."""
+    from api import dependencies
+
+    cleared: list[bool] = []
+
+    class _Spy:
+        def invalidate_cache(self) -> None:
+            cleared.append(True)
+
+    monkeypatch.setattr(dependencies, "get_ic_service", lambda: _Spy())
+    dependencies.invalidate_price_caches()
+
+    assert cleared == [True]
+
+
 @pytest.mark.parametrize(
     "router_module, symbol",
     [
         ("api.routers.periods", "invalidate_fundamentals_caches"),
         ("api.routers.db_metrics", "invalidate_fundamentals_caches"),
+        ("api.routers.prices", "invalidate_price_caches"),
     ],
 )
 def test_writers_of_fundamentals_import_the_hook(router_module, symbol) -> None:

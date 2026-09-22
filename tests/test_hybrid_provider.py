@@ -13,11 +13,12 @@ from modules.infrastructure.market_data.providers.hybrid_provider import HybridP
 class FakeYFinanceProvider:
     """Records what it was asked for and serves a fixed daily series per ticker."""
 
-    provider_name = "fake-yfinance"
+    provider_name = "yfinance"
 
     def __init__(self, series_by_ticker: dict[str, pd.Series] | None = None) -> None:
         self.series_by_ticker = series_by_ticker or {}
         self.requested: list[str] = []
+        self.frequencies: list[str] = []
 
     def fetch_price_matrix(
         self,
@@ -27,8 +28,9 @@ class FakeYFinanceProvider:
         end_date: str,
         frequency: str = "daily",
     ) -> PriceMatrixResult:
-        _ = (start_date, end_date, frequency)
+        _ = (start_date, end_date)
         self.requested.extend(identifiers)
+        self.frequencies.append(frequency)
         columns = {
             identifier: self.series_by_ticker[identifier]
             for identifier in identifiers
@@ -211,3 +213,165 @@ def test_empty_input_returns_empty_result(db: FinancialDatabase) -> None:
 
     assert result.prices.empty
     assert result.missing_identifiers == []
+
+
+# ── Write-through caching ─────────────────────────────────────────────────────
+def test_downloaded_series_is_persisted_and_served_from_the_db_next_time(
+    db: FinancialDatabase,
+) -> None:
+    dates = ["2024-01-01", "2024-01-02", "2024-01-03"]
+    fake = FakeYFinanceProvider({"MSFT": _daily(dates, [10.0, 11.0, 12.0])})
+    provider = HybridPriceProvider(db=db, yf_provider=fake)
+
+    first = provider.fetch_price_matrix(
+        ["MSFT"], start_date="2024-01-01", end_date="2024-01-03"
+    )
+    fake.requested.clear()
+    second = provider.fetch_price_matrix(
+        ["MSFT"], start_date="2024-01-01", end_date="2024-01-03"
+    )
+
+    assert first.prices["MSFT"].tolist() == [10.0, 11.0, 12.0]
+    assert second.prices["MSFT"].tolist() == [10.0, 11.0, 12.0]
+    assert fake.requested == []
+    cached = db.list_cached_tickers()
+    assert cached[0]["ticker"] == "MSFT"
+    assert cached[0]["row_count"] == 3
+    assert cached[0]["sources"] == ["yfinance"]
+
+
+def test_persisted_rows_are_keyed_canonically(db: FinancialDatabase) -> None:
+    """A download requested as 'aapl us equity' must be reusable as 'AAPL'."""
+    fake = FakeYFinanceProvider(
+        {"aapl us equity": _daily(["2024-01-01", "2024-01-03"], [100.0, 102.0])}
+    )
+    provider = HybridPriceProvider(db=db, yf_provider=fake)
+
+    provider.fetch_price_matrix(
+        ["aapl us equity"], start_date="2024-01-01", end_date="2024-01-03"
+    )
+
+    matrix = db.query_price_matrix(["AAPL"], start_date="2024-01-01", end_date="2024-01-03")
+    assert matrix["AAPL"].tolist() == [100.0, 102.0]
+
+
+def test_persisting_never_overwrites_manually_uploaded_prices(
+    db: FinancialDatabase,
+) -> None:
+    _store(db, "AAPL", ["2024-01-01"], [999.0])
+    fake = FakeYFinanceProvider(
+        {"AAPL": _daily(["2024-01-01", "2024-01-02", "2024-01-03"], [1.0, 2.0, 3.0])}
+    )
+    provider = HybridPriceProvider(db=db, yf_provider=fake)
+
+    provider.fetch_price_matrix(["AAPL"], start_date="2024-01-01", end_date="2024-01-03")
+
+    matrix = db.query_price_matrix(["AAPL"], start_date="2024-01-01", end_date="2024-01-03")
+    assert matrix["AAPL"].tolist() == [999.0, 2.0, 3.0]
+    assert db.list_cached_tickers()[0]["sources"] == ["bloomberg", "yfinance"]
+
+
+def test_monthly_requests_download_daily_so_the_cache_stays_daily(
+    db: FinancialDatabase,
+) -> None:
+    """
+    Month-end resampling stamps a bar on the calendar month end, not the last
+    trading day, so monthly bars must never reach the daily price table.
+    """
+    fake = FakeYFinanceProvider(
+        {
+            "MSFT": _daily(
+                ["2024-01-30", "2024-01-31", "2024-02-28", "2024-02-29"],
+                [10.0, 11.0, 20.0, 22.0],
+            )
+        }
+    )
+    provider = HybridPriceProvider(db=db, yf_provider=fake)
+
+    result = provider.fetch_price_matrix(
+        ["MSFT"],
+        start_date="2024-01-01",
+        end_date="2024-02-29",
+        frequency="monthly",
+    )
+
+    assert fake.frequencies == ["daily"]
+    assert result.prices["MSFT"].tolist() == [11.0, 22.0]
+    assert db.list_cached_tickers()[0]["row_count"] == 4
+
+
+def test_a_full_daily_cache_serves_a_monthly_request_without_downloading(
+    db: FinancialDatabase,
+) -> None:
+    """Month-end bounds, or every monthly request re-downloads a complete cache."""
+    _store(
+        db,
+        "AAPL",
+        ["2024-01-15", "2024-01-31", "2024-02-15", "2024-02-29"],
+        [10.0, 11.0, 20.0, 22.0],
+    )
+    fake = FakeYFinanceProvider()
+    provider = HybridPriceProvider(db=db, yf_provider=fake)
+
+    result = provider.fetch_price_matrix(
+        ["AAPL"],
+        start_date="2024-01-01",
+        end_date="2024-02-29",
+        frequency="monthly",
+    )
+
+    assert fake.requested == []
+    assert result.prices["AAPL"].tolist() == [11.0, 22.0]
+    assert result.partial_coverage == []
+
+
+def test_refetching_replaces_the_whole_downloaded_window(db: FinancialDatabase) -> None:
+    """A split rescales the entire adjusted history; segments must not be mixed."""
+    fake = FakeYFinanceProvider(
+        {"MSFT": _daily(["2024-01-01", "2024-01-31"], [100.0, 102.0])}
+    )
+    provider = HybridPriceProvider(db=db, yf_provider=fake)
+    provider.fetch_price_matrix(["MSFT"], start_date="2024-01-01", end_date="2024-01-31")
+
+    # Post-split: the same dates come back on a new adjustment basis, extended
+    # past the cached window so the cache no longer covers the request.
+    fake.series_by_ticker["MSFT"] = _daily(
+        ["2024-01-01", "2024-01-31", "2024-03-01"], [50.0, 51.0, 52.0]
+    )
+    result = provider.fetch_price_matrix(
+        ["MSFT"], start_date="2024-01-01", end_date="2024-03-01"
+    )
+
+    assert result.prices["MSFT"].tolist() == [50.0, 51.0, 52.0]
+    matrix = db.query_price_matrix(["MSFT"], start_date="2024-01-01", end_date="2024-03-01")
+    assert matrix["MSFT"].tolist() == [50.0, 51.0, 52.0]
+
+
+def test_persistence_can_be_switched_off(db: FinancialDatabase) -> None:
+    fake = FakeYFinanceProvider({"MSFT": _daily(["2024-01-01", "2024-01-03"], [1.0, 2.0])})
+    provider = HybridPriceProvider(db=db, yf_provider=fake, persist_downloads=False)
+
+    result = provider.fetch_price_matrix(
+        ["MSFT"], start_date="2024-01-01", end_date="2024-01-03"
+    )
+
+    assert result.prices["MSFT"].tolist() == [1.0, 2.0]
+    assert db.list_cached_tickers() == []
+
+
+def test_a_cache_write_failure_does_not_break_the_read(db: FinancialDatabase) -> None:
+    class FailingDatabase:
+        def query_price_matrix(self, *_args, **_kwargs) -> pd.DataFrame:
+            return pd.DataFrame()
+
+        def replace_price_data_for_source(self, *_args, **_kwargs) -> int:
+            raise RuntimeError("disk full")
+
+    fake = FakeYFinanceProvider({"MSFT": _daily(["2024-01-01", "2024-01-03"], [1.0, 2.0])})
+    provider = HybridPriceProvider(db=FailingDatabase(), yf_provider=fake)
+
+    result = provider.fetch_price_matrix(
+        ["MSFT"], start_date="2024-01-01", end_date="2024-01-03"
+    )
+
+    assert result.prices["MSFT"].tolist() == [1.0, 2.0]

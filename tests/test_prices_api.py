@@ -15,6 +15,7 @@ from api.dependencies import get_price_service
 class FakePriceService:
     def __init__(self) -> None:
         self.deleted: list[str] = []
+        self.deleted_sources: list[str | None] = []
         self.latest_requested: list[str] = []
 
     def ingest_from_file(self, file_content: bytes, filename: str) -> dict:
@@ -35,15 +36,17 @@ class FakePriceService:
                 "min_date": "2024-01-02",
                 "max_date": "2024-01-03",
                 "row_count": 2,
+                "sources": ["bloomberg", "yfinance"],
             }
         ]
 
-    def delete_tickers(self, tickers: list[str]) -> dict:
+    def delete_tickers(self, tickers: list[str], source: str | None = None) -> dict:
         cleaned = [t.strip().upper() for t in tickers if t.strip()]
         if not cleaned:
             raise ValueError("No valid tickers provided.")
         self.deleted.extend(cleaned)
-        return {"deleted_rows": len(cleaned), "tickers": cleaned}
+        self.deleted_sources.append(source)
+        return {"deleted_rows": len(cleaned), "tickers": cleaned, "source": source}
 
     def get_latest_closes(self, tickers: list[str]) -> dict:
         self.latest_requested.extend(tickers)
@@ -107,8 +110,23 @@ def test_delete_tickers(client: TestClient, fake_service: FakePriceService) -> N
     response = client.request("DELETE", "/prices/tickers", json=["aapl"])
 
     assert response.status_code == 200
-    assert response.json() == {"deleted_rows": 1, "tickers": ["AAPL"]}
+    assert response.json() == {"deleted_rows": 1, "tickers": ["AAPL"], "source": None}
     assert fake_service.deleted == ["AAPL"]
+    assert fake_service.deleted_sources == [None]
+
+
+def test_delete_forwards_the_source_filter(
+    client: TestClient,
+    fake_service: FakePriceService,
+) -> None:
+    """Invalidating downloaded prices must not touch manual uploads."""
+    response = client.request(
+        "DELETE", "/prices/tickers", json=["aapl"], params={"source": "yfinance"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["source"] == "yfinance"
+    assert fake_service.deleted_sources == ["yfinance"]
 
 
 def test_delete_rejects_an_empty_list(client: TestClient) -> None:

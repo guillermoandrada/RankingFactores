@@ -110,3 +110,14 @@ def invalidate_fundamentals_caches() -> None:
     request replays pre-import numbers and looks freshly computed.
     """
     get_ic_service().invalidate_cache()
+
+
+def invalidate_price_caches() -> None:
+    """
+    Drop caches derived from prices.
+
+    IC forward returns are computed from the price matrix, so uploading or
+    deleting cached prices changes IC inputs exactly as a fundamentals import
+    does — and the memoised results have to go for the same reason.
+    """
+    get_ic_service().invalidate_cache()

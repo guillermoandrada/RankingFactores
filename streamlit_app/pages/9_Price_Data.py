@@ -10,9 +10,12 @@ from streamlit_app.ui import get_api_client, render_page_header, render_sidebar_
 
 render_page_header(
     "Price Data",
-    "Upload Bloomberg close-price files for delisted or manually-managed securities. "
-    "Cached prices take priority over yfinance in IC analysis and backtests.",
+    "The price cache behind IC analysis and backtests. Series downloaded from Yahoo "
+    "Finance are stored here automatically and served from the database on later "
+    "runs; uploaded Bloomberg files take priority over them, date by date.",
 )
+
+_DOWNLOADED_SOURCE = "yfinance"
 
 client = get_api_client()
 render_sidebar_api_status(client)
@@ -50,9 +53,9 @@ with upload_tab:
 
 # ── Manage ────────────────────────────────────────────────────────────────────
 with manage_tab:
-    st.markdown("View and delete cached price series.")
+    st.markdown("View, invalidate and delete cached price series.")
 
-    if st.button("Refresh", key="price_refresh"):
+    if st.button("Reload list", key="price_refresh"):
         st.session_state.pop("cached_price_tickers", None)
 
     if "cached_price_tickers" not in st.session_state:
@@ -66,28 +69,62 @@ with manage_tab:
     rows_data = st.session_state.get("cached_price_tickers", [])
 
     if not rows_data:
-        st.info("No price data cached yet. Upload a Bloomberg file to get started.")
+        st.info(
+            "No price data cached yet. Upload a Bloomberg file, or run an IC analysis "
+            "or backtest — downloaded series are stored automatically."
+        )
     else:
         df = pd.DataFrame(rows_data)
+        if "sources" in df.columns:
+            df["sources"] = df["sources"].apply(
+                lambda values: ", ".join(values) if isinstance(values, list) else values
+            )
         st.dataframe(df, use_container_width=True, hide_index=True)
 
         ticker_list = sorted(df["ticker"].tolist())
-        to_delete = st.multiselect(
-            "Select tickers to delete",
+        selected = st.multiselect(
+            "Select tickers",
             options=ticker_list,
             key="price_delete_select",
         )
-        if to_delete:
-            if st.button(
-                f"Delete {len(to_delete)} ticker(s)",
-                type="primary",
-                key="price_delete_btn",
-            ):
-                try:
-                    result = client.delete_cached_price_tickers(to_delete)
-                    deleted = result.get("deleted_rows", 0)
-                    st.success(f"Deleted **{deleted:,}** rows for: {', '.join(to_delete)}")
-                    st.session_state.pop("cached_price_tickers", None)
-                    st.rerun()
-                except ApiError as exc:
-                    st.error(str(exc))
+        if selected:
+            refresh_col, delete_col = st.columns(2)
+            with refresh_col:
+                if st.button(
+                    f"Invalidate downloaded prices ({len(selected)})",
+                    key="price_invalidate_btn",
+                    help=(
+                        "Drop only the rows downloaded from Yahoo Finance so the next "
+                        "run refetches them. Uploaded Bloomberg prices are kept. Use "
+                        "this after a split or a large dividend, which rescale the "
+                        "whole adjusted history."
+                    ),
+                ):
+                    try:
+                        result = client.delete_cached_price_tickers(
+                            selected, source=_DOWNLOADED_SOURCE
+                        )
+                        deleted = result.get("deleted_rows", 0)
+                        st.success(
+                            f"Invalidated **{deleted:,}** downloaded rows for: "
+                            f"{', '.join(selected)}"
+                        )
+                        st.session_state.pop("cached_price_tickers", None)
+                        st.rerun()
+                    except ApiError as exc:
+                        st.error(str(exc))
+            with delete_col:
+                if st.button(
+                    f"Delete all prices ({len(selected)})",
+                    type="primary",
+                    key="price_delete_btn",
+                    help="Remove every cached row, uploaded prices included.",
+                ):
+                    try:
+                        result = client.delete_cached_price_tickers(selected)
+                        deleted = result.get("deleted_rows", 0)
+                        st.success(f"Deleted **{deleted:,}** rows for: {', '.join(selected)}")
+                        st.session_state.pop("cached_price_tickers", None)
+                        st.rerun()
+                    except ApiError as exc:
+                        st.error(str(exc))

@@ -17,6 +17,10 @@ from modules.infrastructure.db.schema import create_tables
 from modules.domain.models import ImportResult
 from modules.shared.dataframes import dataframe_to_jsonable_records
 
+# SQLite caps the bound parameters of a single statement; a full daily price
+# history easily exceeds that cap when deleted in one ``IN`` clause.
+_PRICE_DELETE_BATCH_SIZE = 500
+
 
 class FinancialDatabase:
     """
@@ -897,32 +901,111 @@ class FinancialDatabase:
         """
         Insert or replace close prices from a DataFrame with columns
         ['ticker', 'price_date', 'close_price', 'source'].
-        On conflict (ticker + price_date), the existing row is replaced.
-        Returns the number of rows written.
+        On conflict (ticker + price_date), the existing row is replaced regardless
+        of which source holds it. This is the write path for manual uploads, which
+        are authoritative. Returns the number of rows written.
         """
-        if df.empty:
-            return 0
-        required = {"ticker", "price_date", "close_price", "source"}
-        if not required.issubset(df.columns):
-            raise ValueError(f"DataFrame must have columns: {required}")
-
-        to_write = df[["ticker", "price_date", "close_price", "source"]].copy()
-        to_write["close_price"] = pd.to_numeric(to_write["close_price"], errors="coerce")
-        to_write = to_write.dropna(subset=["close_price"])
+        to_write = self._prepare_price_frame(df)
         if to_write.empty:
             return 0
 
         tbl = self._get_table("price_data")
         with self._engine.begin() as conn:
-            for ticker in to_write["ticker"].unique():
-                dates = to_write[to_write["ticker"] == ticker]["price_date"].tolist()
-                conn.execute(
-                    delete(tbl).where(
-                        and_(tbl.c.ticker == ticker, tbl.c.price_date.in_(dates))
-                    )
-                )
+            for ticker, group in to_write.groupby("ticker", sort=False):
+                self._delete_price_dates(conn, tbl, str(ticker), group["price_date"].tolist())
             to_write.to_sql("price_data", con=conn, if_exists="append", index=False)
         return len(to_write)
+
+    def replace_price_data_for_source(
+        self,
+        df: pd.DataFrame,
+        *,
+        source: str,
+        start_date: str,
+        end_date: str,
+    ) -> int:
+        """
+        Replace one provider's rows inside a date window, leaving other providers
+        untouched. Takes the same columns as :meth:`upsert_price_data` and returns
+        the number of rows written.
+
+        This is the write path for auto-cached provider data, and it differs from
+        :meth:`upsert_price_data` in both directions. It drops the provider's
+        previous rows for the whole window instead of only the dates it is about
+        to write, because adjusted closes are rescaled retroactively by splits and
+        dividends: mixing a stale segment with a freshly fetched one would put two
+        adjustment bases in one series and fabricate a jump in returns. And it
+        skips dates already held by another provider, so a manually uploaded price
+        is never overwritten by an automatic refetch.
+        """
+        if not source:
+            raise ValueError("A source is required to replace provider rows.")
+        to_write = self._prepare_price_frame(df)
+        if to_write.empty:
+            return 0
+
+        tickers = sorted(to_write["ticker"].unique().tolist())
+        tbl = self._get_table("price_data")
+        with self._engine.begin() as conn:
+            conn.execute(
+                delete(tbl).where(
+                    and_(
+                        tbl.c.ticker.in_(tickers),
+                        tbl.c.source == source,
+                        tbl.c.price_date >= start_date,
+                        tbl.c.price_date <= end_date,
+                    )
+                )
+            )
+            surviving = conn.execute(
+                select(tbl.c.ticker, tbl.c.price_date).where(
+                    and_(
+                        tbl.c.ticker.in_(tickers),
+                        tbl.c.price_date >= start_date,
+                        tbl.c.price_date <= end_date,
+                    )
+                )
+            ).fetchall()
+            reserved = {(row[0], row[1]) for row in surviving}
+            if reserved:
+                keys = list(zip(to_write["ticker"], to_write["price_date"]))
+                to_write = to_write.loc[[key not in reserved for key in keys]]
+            if to_write.empty:
+                return 0
+            to_write["source"] = source
+            to_write.to_sql("price_data", con=conn, if_exists="append", index=False)
+        return len(to_write)
+
+    @staticmethod
+    def _prepare_price_frame(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Coerce a price frame to the stored column set, dropping unusable rows.
+
+        Duplicate (ticker, price_date) pairs collapse onto the last occurrence:
+        two identifiers a caller supplied can canonicalize to one ticker (``GOOG``
+        and ``GOOGL``), and the unique constraint would reject the whole batch.
+        """
+        required = {"ticker", "price_date", "close_price", "source"}
+        if df.empty:
+            return pd.DataFrame(columns=sorted(required))
+        if not required.issubset(df.columns):
+            raise ValueError(f"DataFrame must have columns: {required}")
+
+        prepared = df[["ticker", "price_date", "close_price", "source"]].copy()
+        prepared["close_price"] = pd.to_numeric(prepared["close_price"], errors="coerce")
+        prepared = prepared.dropna(subset=["close_price"])
+        return prepared.drop_duplicates(subset=["ticker", "price_date"], keep="last")
+
+    @staticmethod
+    def _delete_price_dates(conn, tbl: Table, ticker: str, dates: list[str]) -> None:
+        """Delete one ticker's rows for the given dates, in bounded batches."""
+        for start in range(0, len(dates), _PRICE_DELETE_BATCH_SIZE):
+            batch = dates[start : start + _PRICE_DELETE_BATCH_SIZE]
+            conn.execute(
+                delete(tbl).where(
+                    and_(tbl.c.ticker == ticker, tbl.c.price_date.in_(batch))
+                )
+            )
 
     def query_price_matrix(
         self,
@@ -930,22 +1013,31 @@ class FinancialDatabase:
         *,
         start_date: str,
         end_date: str,
+        exclude_source: str | None = None,
     ) -> pd.DataFrame:
         """
         Return a wide DataFrame (DatetimeIndex, ticker columns) for the requested
         tickers and date range from the price_data table. Missing pairs are NaN.
+
+        ``exclude_source`` drops one provider's rows from the result. Callers use
+        it to isolate the authoritative part of a series: a re-downloadable row
+        must not outrank a fresh download of the same window, while a manually
+        uploaded one must.
         """
         if not tickers:
             return pd.DataFrame()
         tbl = self._get_table("price_data")
+        conditions = [
+            tbl.c.ticker.in_(tickers),
+            tbl.c.price_date >= start_date,
+            tbl.c.price_date <= end_date,
+        ]
+        if exclude_source:
+            conditions.append(tbl.c.source != exclude_source)
         with self._engine.connect() as conn:
             rows = pd.read_sql_query(
                 select(tbl.c.ticker, tbl.c.price_date, tbl.c.close_price).where(
-                    and_(
-                        tbl.c.ticker.in_(tickers),
-                        tbl.c.price_date >= start_date,
-                        tbl.c.price_date <= end_date,
-                    )
+                    and_(*conditions)
                 ),
                 con=conn,
             )
@@ -961,7 +1053,12 @@ class FinancialDatabase:
         return matrix.sort_index()
 
     def list_cached_tickers(self) -> list[dict]:
-        """Return [{ticker, min_date, max_date, row_count}] for all tickers in price_data."""
+        """
+        Return [{ticker, min_date, max_date, row_count, sources}] for price_data.
+
+        ``sources`` names the providers the series was assembled from, so a
+        manually uploaded history stays distinguishable from an auto-cached one.
+        """
         tbl = self._get_table("price_data")
         with self._engine.connect() as conn:
             rows = conn.execute(
@@ -974,18 +1071,48 @@ class FinancialDatabase:
                 .group_by(tbl.c.ticker)
                 .order_by(tbl.c.ticker)
             ).fetchall()
+            source_rows = conn.execute(
+                select(tbl.c.ticker, tbl.c.source)
+                .group_by(tbl.c.ticker, tbl.c.source)
+                .order_by(tbl.c.ticker, tbl.c.source)
+            ).fetchall()
+
+        sources_by_ticker: dict[str, list[str]] = {}
+        for ticker, source in source_rows:
+            sources_by_ticker.setdefault(ticker, []).append(source)
+
         return [
-            {"ticker": r[0], "min_date": r[1], "max_date": r[2], "row_count": r[3]}
+            {
+                "ticker": r[0],
+                "min_date": r[1],
+                "max_date": r[2],
+                "row_count": r[3],
+                "sources": sources_by_ticker.get(r[0], []),
+            }
             for r in rows
         ]
 
-    def delete_price_data_for_tickers(self, tickers: list[str]) -> int:
-        """Delete all price_data rows for the given tickers. Returns rows deleted."""
+    def delete_price_data_for_tickers(
+        self,
+        tickers: list[str],
+        *,
+        source: str | None = None,
+    ) -> int:
+        """
+        Delete price_data rows for the given tickers. Returns rows deleted.
+
+        ``source`` narrows the deletion to one provider, which is how an
+        auto-cached history gets refreshed without discarding manually uploaded
+        prices for the same ticker.
+        """
         if not tickers:
             return 0
         tbl = self._get_table("price_data")
+        conditions = [tbl.c.ticker.in_(tickers)]
+        if source:
+            conditions.append(tbl.c.source == source)
         with self._engine.begin() as conn:
-            result = conn.execute(delete(tbl).where(tbl.c.ticker.in_(tickers)))
+            result = conn.execute(delete(tbl).where(and_(*conditions)))
         return result.rowcount or 0
 
     def _write_index_membership(

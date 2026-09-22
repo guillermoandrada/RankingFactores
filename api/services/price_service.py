@@ -49,13 +49,21 @@ class PriceService:
         """Return all tickers with cached prices and their date ranges."""
         return self._db.list_cached_tickers()
 
-    def delete_tickers(self, tickers: list[str]) -> dict:
-        """Delete all cached prices for the given tickers."""
+    def delete_tickers(self, tickers: list[str], source: str | None = None) -> dict:
+        """
+        Delete cached prices for the given tickers.
+
+        ``source`` restricts the deletion to one provider. Passing
+        ``PRICE_SOURCE_YFINANCE`` is how a downloaded history is invalidated so
+        the next request refetches it — adjusted closes are rescaled
+        retroactively by splits, so a long-lived cache does go stale — without
+        discarding manually uploaded prices for the same tickers.
+        """
         canonical = sorted(set(canonical_ticker_map(list(tickers)).values()))
         if not canonical:
             raise ValueError("No valid tickers provided.")
-        deleted = self._db.delete_price_data_for_tickers(canonical)
-        return {"deleted_rows": deleted, "tickers": canonical}
+        deleted = self._db.delete_price_data_for_tickers(canonical, source=source)
+        return {"deleted_rows": deleted, "tickers": canonical, "source": source}
 
     def get_latest_closes(self, tickers: list[str]) -> dict:
         """

@@ -1,8 +1,9 @@
 # RankingFactores — Architecture Guide
 
 Onboarding document for developers and AI coding tools. Read this first, then
-[docs/PRICING.md](PRICING.md) if you touch anything that reads or writes prices, and
-[docs/CODE_QUALITY_REVIEW.md](CODE_QUALITY_REVIEW.md) for the known-debt backlog.
+[docs/RANKING_CALCULATION.md](RANKING_CALCULATION.md) if you touch derived metrics, scoring profiles
+or the scoring pipeline, [docs/PRICING.md](PRICING.md) if you touch anything that reads or writes
+prices, and [docs/CODE_QUALITY_REVIEW.md](CODE_QUALITY_REVIEW.md) for the known-debt backlog.
 
 For how the application is *used* — building factors, ranking, constructing portfolios and
 backtesting them through the Streamlit UI — see [docs/USER_GUIDE.md](USER_GUIDE.md). Read it before
@@ -227,8 +228,10 @@ responses are different shapes — one period envelope versus a per-period list 
 affordance, not a claim that one endpoint serves all four readers.
 
 **Price plane.** Excel → [BloombergPriceFileReader](../modules/infrastructure/ingestion/readers/bloomberg_prices.py)
-→ `price_data`; reads go through [HybridPriceProvider](../modules/infrastructure/market_data/providers/hybrid_provider.py),
-which prefers `price_data` and falls back to Yahoo Finance. **Fully documented in
+→ `price_data`. Reads go through [HybridPriceProvider](../modules/infrastructure/market_data/providers/hybrid_provider.py),
+which serves `price_data` first, falls back to Yahoo Finance for whatever the cache does not cover,
+and writes that download back — so `price_data` is the primary source, not just an override store.
+Every row is daily, and `source` decides priority. **Fully documented in
 [docs/PRICING.md](PRICING.md) — read it before changing anything here.**
 
 ---

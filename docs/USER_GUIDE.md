@@ -680,6 +680,11 @@ A component with `status = missing_start_price` was dropped; `cash` is the cash 
 Yahoo Finance cannot price everything — delisted names, unusual listings, non-US venues. Upload your own
 closes and they take priority over Yahoo in **backtests, IC analysis and Fetch latest prices**.
 
+This page is also where the app's price cache lives. Anything it downloads from Yahoo is **stored here
+automatically**, so the first backtest of a window is slow and every later run over the same window is
+served from the database — no network needed. You do not have to do anything to make that happen; the
+tickers simply start appearing in **Manage** with source `yfinance`.
+
 **Upload tab.** A Bloomberg wide-format Excel file:
 
 | | Column A | Column B | Column C | … |
@@ -706,8 +711,21 @@ price cells and headers that could not be read.
 Prices must be **adjusted closes** if you want returns to be comparable with Yahoo's (which are
 adjusted). Mixing raw and adjusted closes across securities biases returns.
 
-**Manage tab.** Lists every cached ticker with its date range and row count. **Refresh** reloads;
-select tickers and delete to remove them. Re-uploading overlapping dates overwrites the existing values.
+**Manage tab.** Lists every cached ticker with its date range, row count and **sources** —
+`bloomberg` for what you uploaded, `yfinance` for what the app downloaded. **Reload list** refreshes
+the table. Select tickers and you get two actions:
+
+| Action | What it does |
+|---|---|
+| **Invalidate downloaded prices** | Deletes only the `yfinance` rows, so the next backtest or IC run downloads them again. Your uploads for the same tickers are kept. |
+| **Delete all prices** | Removes every cached row, uploads included. |
+
+Re-uploading overlapping dates overwrites the existing values.
+
+**When to invalidate.** Yahoo's closes are *adjusted*, and a stock split or a large dividend rescales
+its **entire** history retroactively. The cache does not notice — a window it already covers is never
+re-downloaded — so a split after the data was cached leaves you with prices on the old scale. If a
+holding's backtest shows an implausible jump, invalidate its downloaded prices and re-run.
 
 **Coverage matters.** Uploading part of a window is handled honestly — cached dates are used, the rest
 comes from Yahoo, and if neither source covers the whole window the backtest warns you about partial

@@ -90,8 +90,27 @@ def test_delete_canonicalizes_and_reports_rows(service: PriceService) -> None:
 
     result = service.delete_tickers(["aapl us equity"])
 
-    assert result == {"deleted_rows": 2, "tickers": ["AAPL"]}
+    assert result == {"deleted_rows": 2, "tickers": ["AAPL"], "source": None}
     assert service.list_cached_tickers() == []
+
+
+def test_delete_by_source_keeps_uploaded_prices(service: PriceService) -> None:
+    """Invalidating downloaded rows must leave a manual upload for the same ticker."""
+    service.ingest_from_file(
+        _workbook(
+            [
+                [None, None],
+                ["Date", "AAPL"],
+                ["2024-01-02", 100.0],
+            ]
+        ),
+        "prices.xlsx",
+    )
+
+    result = service.delete_tickers(["AAPL"], "yfinance")
+
+    assert result["deleted_rows"] == 0
+    assert [row["ticker"] for row in service.list_cached_tickers()] == ["AAPL"]
 
 
 def test_delete_rejects_input_with_no_valid_tickers(service: PriceService) -> None:

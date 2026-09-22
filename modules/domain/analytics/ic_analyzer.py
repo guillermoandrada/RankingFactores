@@ -20,6 +20,7 @@ from sqlalchemy.engine import Engine
 
 from modules.infrastructure.db import FinancialDatabase
 from modules.infrastructure.market_data.providers.base import BasePriceProvider
+from modules.infrastructure.market_data.providers.hybrid_provider import HybridPriceProvider
 from modules.infrastructure.market_data.providers.yfinance_provider import YFinancePriceProvider
 
 
@@ -62,7 +63,7 @@ class ICAnalyzer:
             db = db or FinancialDatabase()
             engine = db.engine
         self._engine = engine
-        self._price_service = price_service or YFinancePriceProvider()
+        self._price_service = price_service or self._default_price_provider(db)
         self._publication_lag_days = int(publication_lag_days)
         self._logger = logger or logging.getLogger(__name__)
 
@@ -71,6 +72,19 @@ class ICAnalyzer:
         self._tbl_fund = self._metadata.tables["fundamental_values"]
         self._tbl_sec = self._metadata.tables["securities"]
         self._tbl_metrics = self._metadata.tables["metrics"]
+
+    @staticmethod
+    def _default_price_provider(
+        db: Optional[FinancialDatabase],
+    ) -> BasePriceProvider:
+        """
+        Prefer the cache-backed provider so an unwired analyzer still reads
+        prices from the database first. Callers that supply only an ``engine``
+        have no repository to cache through and fall back to Yahoo directly.
+        """
+        if db is None:
+            return YFinancePriceProvider()
+        return HybridPriceProvider(db=db, yf_provider=YFinancePriceProvider())
 
     def analyze_multivariate(
         self,

@@ -486,9 +486,19 @@ class RankingApiClient:
         data = self._request("GET", "/prices/tickers")
         return data.get("tickers", [])
 
-    def delete_cached_price_tickers(self, tickers: list[str]) -> dict[str, Any]:
-        """Delete cached price data for the given tickers."""
-        return self._request("DELETE", "/prices/tickers", json=tickers)
+    def delete_cached_price_tickers(
+        self,
+        tickers: list[str],
+        source: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Delete cached price data for the given tickers.
+
+        ``source`` narrows the deletion to one provider, so a downloaded history
+        can be invalidated for refetch without losing manual uploads.
+        """
+        params = {"source": source} if source else None
+        return self._request("DELETE", "/prices/tickers", json=tickers, params=params)
 
     def export_ranking_xlsx(
         self,
