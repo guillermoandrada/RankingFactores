@@ -15,7 +15,7 @@ class _CountingAnalyzer:
         self.calls = 0
         self.cleared = 0
 
-    def analyze_multivariate(self, *, metric_names, forward_months, periods):
+    def analyze_multivariate(self, *, metric_names, forward_months, periods, group_by):
         self.calls += 1
         return {"predictive": [], "calls": self.calls}
 
@@ -48,6 +48,14 @@ def test_a_different_request_is_computed(service_and_analyzer) -> None:
     service, analyzer = service_and_analyzer
     _run(service)
     service.analyze(metric_names=["ROE", "Debt"], forward_months=6)
+
+    assert analyzer.calls == 2
+
+
+def test_a_different_breakdown_is_computed(service_and_analyzer) -> None:
+    service, analyzer = service_and_analyzer
+    _run(service)
+    service.analyze(metric_names=["ROE", "Debt"], forward_months=3, group_by="industry")
 
     assert analyzer.calls == 2
 

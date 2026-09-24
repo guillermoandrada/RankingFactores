@@ -8,6 +8,7 @@ from streamlit_app.ui.api import (
     render_sidebar_api_status,
 )
 from streamlit_app.ui.layout import inject_custom_css, render_page_header, render_section
+from streamlit_app.ui.metric_labels import formula_text, is_derived_metric, metric_label
 from streamlit_app.ui.results import (
     PageResult,
     clear_result,
@@ -31,6 +32,9 @@ __all__ = [
     "inject_custom_css",
     "render_page_header",
     "render_section",
+    "formula_text",
+    "is_derived_metric",
+    "metric_label",
     "PageResult",
     "clear_result",
     "format_inputs",

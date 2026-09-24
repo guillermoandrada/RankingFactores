@@ -80,6 +80,13 @@ def get_price_service():
 
 
 @lru_cache(maxsize=1)
+def get_total_return_service():
+    from api.services.total_return_service import TotalReturnService
+
+    return TotalReturnService(db=get_db())
+
+
+@lru_cache(maxsize=1)
 def get_backtest_service() -> BacktestService:
     from api.services.backtest_service import BacktestService
 

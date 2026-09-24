@@ -119,6 +119,341 @@
       },
       "winsor_mode": "quantile",
       "method": "linear"
+    },
+    "Momentum_22_09": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "12m Total Return": 0.25,
+            "3m Total Return": 0.25,
+            "6m Total Return": 0.25,
+            "Volatility": 0.25
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "linear"
+    },
+    "Value_24-09": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/S Ratio": 0.15,
+            "Current P/E Ratio": 0.12,
+            "Current EV / EBITDA": 0.11,
+            "Current FCF Yield": 0.26,
+            "Current P/B Ratio": 0.18,
+            "EV/EBITDA Change": 0.1,
+            "FCF Yield Trend": 0.08
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Banks": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.05,
+            "Current P/S Ratio": 0.44,
+            "Current P/B Ratio": 0.42,
+            "P/B Change": 0.09
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Insurance": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.12,
+            "Current P/S Ratio": 0.09,
+            "Current P/B Ratio": 0.25,
+            "P/B Change": 0.07,
+            "P/B Trend": 0.2,
+            "Current FCF Yield": 0.27
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Financial Services": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.28,
+            "Current P/S Ratio": 0.22,
+            "Current P/B Ratio": 0.23,
+            "Current EV / EBITDA": 0.23,
+            "Current FCF Yield": 0.04
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Equity Real Estate Investment Trusts (REITs)": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.42,
+            "Current P/S Ratio": 0.09,
+            "Current EV / EBITDA": 0.35,
+            "EV/EBITDA Change": 0.06,
+            "Current FCF Yield": 0.08
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Consumer Services": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/S Ratio": 0.09,
+            "P/S Change": 0.49,
+            "Current FCF Yield": 0.42
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Consumer Durables & Apparel": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.11,
+            "Current P/S Ratio": 0.04,
+            "Current P/B Ratio": 0.07,
+            "Current EV / EBITDA": 0.13,
+            "P/E Change": 0.08,
+            "P/S Change": 0.13,
+            "P/B Change": 0.08,
+            "P/B Trend": 0.08,
+            "Current FCF Yield": 0.28
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Energy": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "P/E Trend": 0.12,
+            "Current P/S Ratio": 0.49,
+            "Current P/B Ratio": 0.02,
+            "Current EV / EBITDA": 0.05,
+            "FCF Yield Trend": 0.32
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Consumer Discretionary Distribution & Retail": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.14,
+            "Current EV / EBITDA": 0.1,
+            "P/E Trend": 0.09,
+            "EV/EBITDA Change": 0.41,
+            "Current FCF Yield": 0.26
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Software & Services": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "P/E Change": 0.07,
+            "P/S Change": 0.14,
+            "P/S Trend": 0.21,
+            "P/B Change": 0.24,
+            "P/B Trend": 0.22,
+            "FCF Yield Change": 0.12
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Semiconductors & Semiconductor Equipment": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "P/E Trend": 0.08,
+            "P/S Trend": 0.36,
+            "P/S Change": 0.33,
+            "FCF Yield Trend": 0.23
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Transportation": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "P/E Trend": 0.12,
+            "Current P/S Ratio": 0.01,
+            "P/S Change": 0.27,
+            "P/B Change": 0.19,
+            "Current FCF Yield": 0.08,
+            "FCF Yield Change": 0.1,
+            "FCF Yield Trend": 0.23
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Food, Beverage & Tobacco": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "P/E Trend": 0.24,
+            "P/S Trend": 0.46,
+            "P/B Trend": 0.3
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Pharmaceuticals, Biotechnology & Life Sciences": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/S Ratio": 0.3,
+            "Current FCF Yield": 0.56,
+            "FCF Yield Trend": 0.14
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Household & Personal Products": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "P/S Change": 0.05,
+            "P/S Trend": 0.38,
+            "Current P/B Ratio": 0.57
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
     }
   }
 }

@@ -11,6 +11,8 @@ import streamlit as st
 
 from streamlit_app.client.api_client import ApiError
 from streamlit_app.ui import (
+    is_derived_metric,
+    metric_label,
     get_api_client,
     read_result,
     render_page_header,
@@ -27,6 +29,11 @@ _DIRECTION_IC_THRESHOLD = 0.02
 _HEATMAP_CELL_PX = 46
 _HEATMAP_MIN_PX = 260
 _HEATMAP_MAX_PX = 900
+_TOTAL_BREAKDOWN_LABEL = "Total"
+_GROUP_BY_AGGREGATION = {"By sector": "sector", "By industry": "industry"}
+# Colour scale floor for the group IC heatmap, so a run of tiny ICs is not painted
+# as if it were strong.
+_GROUP_IC_MIN_DOMAIN = 0.05
 
 
 def _predictive_dataframe(predictive: list[dict[str, Any]]) -> pd.DataFrame:
@@ -43,6 +50,37 @@ def _predictive_dataframe(predictive: list[dict[str, Any]]) -> pd.DataFrame:
             for item in predictive
         ]
     )
+
+
+def _group_breakdown_dataframe(breakdown: dict[str, Any] | None) -> pd.DataFrame:
+    """Per metric and group Rank IC, shared by the on-screen view and the export."""
+    if not breakdown:
+        return pd.DataFrame()
+    group_title = str(breakdown.get("group_by", "group")).capitalize()
+    return pd.DataFrame(
+        [
+            {
+                "Metric": row.get("metric_name", ""),
+                group_title: row.get("group", ""),
+                "Mean Rank IC": row.get("mean_rank_ic"),
+                "IC Standard Deviation": row.get("ic_std"),
+                "Information Ratio": row.get("information_ratio"),
+                "Periods (T)": row.get("n_periods", 0),
+                "Avg. securities": row.get("mean_n"),
+            }
+            for row in breakdown.get("rows") or []
+        ]
+    )
+
+
+def _group_ic_matrix(breakdown: dict[str, Any] | None) -> pd.DataFrame:
+    """Mean Rank IC with one row per group and one column per metric."""
+    table = _group_breakdown_dataframe(breakdown)
+    if table.empty:
+        return pd.DataFrame()
+    group_title = table.columns[1]
+    metric_order = list(dict.fromkeys(table["Metric"]))
+    return table.pivot(index=group_title, columns="Metric", values="Mean Rank IC")[metric_order]
 
 
 def _correlation_dataframe(inter: dict[str, Any]) -> pd.DataFrame:
@@ -96,6 +134,12 @@ def _ic_export_bytes(result: dict[str, Any]) -> bytes:
         periods = _periods_dataframe(result.get("periods", {}))
         if not periods.empty:
             periods.to_excel(writer, index=False, sheet_name="Periods")
+        breakdown = result.get("group_breakdown")
+        groups = _group_breakdown_dataframe(breakdown)
+        if not groups.empty:
+            groups.to_excel(
+                writer, index=False, sheet_name=f"By {breakdown['group_by']}"
+            )
     return buffer.getvalue()
 
 
@@ -130,52 +174,103 @@ def _render_predictive_section(predictive: list[dict[str, Any]]) -> None:
     st.dataframe(_predictive_dataframe(predictive), width="stretch", hide_index=True)
 
 
-def _render_correlation_heatmap(correlation: pd.DataFrame) -> None:
+def _render_heatmap(
+    matrix: pd.DataFrame,
+    *,
+    value_title: str,
+    domain: tuple[float, float],
+    row_title: str,
+    column_title: str,
+) -> None:
     """
-    Interactive Spearman heatmap.
+    Interactive diverging heatmap.
 
     Altair rather than a static image, so long metric names stay readable through
     tooltips and the chart matches every other chart in the app.
     """
-    labels = [str(label) for label in correlation.columns]
+    rows = [str(label) for label in matrix.index]
+    columns = [str(label) for label in matrix.columns]
     records = [
-        {"row": str(row_label), "column": str(column_label), "correlation": float(value)}
-        for row_label in correlation.index
-        for column_label, value in correlation.loc[row_label].items()
+        {"row": str(row_label), "column": str(column_label), "value": float(value)}
+        for row_label in matrix.index
+        for column_label, value in matrix.loc[row_label].items()
         if pd.notna(value)
     ]
     if not records:
-        st.info("No inter-factor matrix available.")
+        st.info("No matrix available.")
         return
 
-    size = min(_HEATMAP_MAX_PX, max(_HEATMAP_MIN_PX, _HEATMAP_CELL_PX * len(labels)))
+    def extent(count: int) -> int:
+        return min(_HEATMAP_MAX_PX, max(_HEATMAP_MIN_PX, _HEATMAP_CELL_PX * count))
+
     base = alt.Chart(pd.DataFrame(records)).encode(
-        x=alt.X("column:N", title=None, sort=labels, axis=alt.Axis(labelAngle=-40)),
-        y=alt.Y("row:N", title=None, sort=labels),
+        x=alt.X("column:N", title=None, sort=columns, axis=alt.Axis(labelAngle=-40)),
+        y=alt.Y("row:N", title=None, sort=rows),
     )
     heatmap = base.mark_rect().encode(
         color=alt.Color(
-            "correlation:Q",
-            title="Spearman",
-            scale=alt.Scale(scheme="redblue", domain=[-1.0, 1.0], reverse=True),
+            "value:Q",
+            title=value_title,
+            scale=alt.Scale(scheme="redblue", domain=list(domain), reverse=True),
         ),
         tooltip=[
-            alt.Tooltip("row:N", title="Factor"),
-            alt.Tooltip("column:N", title="vs"),
-            alt.Tooltip("correlation:Q", title="Spearman", format=".3f"),
+            alt.Tooltip("row:N", title=row_title),
+            alt.Tooltip("column:N", title=column_title),
+            alt.Tooltip("value:Q", title=value_title, format=".3f"),
         ],
     )
+    # Cells at either extreme are dark, so their labels need to flip to white.
+    dark_threshold = 0.55 * max(abs(domain[0]), abs(domain[1]))
     annotations = base.mark_text(fontSize=11).encode(
-        text=alt.Text("correlation:Q", format=".2f"),
-        # Cells at either extreme are dark, so their labels need to flip to white.
+        text=alt.Text("value:Q", format=".2f"),
         color=alt.condition(
-            "abs(datum.correlation) > 0.55", alt.value("white"), alt.value("black")
+            f"abs(datum.value) > {dark_threshold}", alt.value("white"), alt.value("black")
         ),
     )
     st.altair_chart(
-        (heatmap + annotations).properties(width=size, height=size),
+        (heatmap + annotations).properties(width=extent(len(columns)), height=extent(len(rows))),
         use_container_width=True,
     )
+
+
+def _render_correlation_heatmap(correlation: pd.DataFrame) -> None:
+    _render_heatmap(
+        correlation,
+        value_title="Spearman",
+        domain=(-1.0, 1.0),
+        row_title="Factor",
+        column_title="vs",
+    )
+
+
+def _render_group_breakdown_section(breakdown: dict[str, Any] | None) -> None:
+    """Section A2: Rank IC computed inside each sector or industry cross-section."""
+    if breakdown is None:
+        return
+    group_title = str(breakdown.get("group_by", "group")).capitalize()
+    st.markdown(f"### Section A2 — Rank IC by {group_title.lower()}")
+    st.caption(
+        f"Rank IC computed within each {group_title.lower()} per period, then averaged over "
+        "time. A factor that only works in some groups shows up here even when its overall "
+        "IC is weak. Groups with fewer than 5 securities in a period skip that period, so "
+        "check **Periods (T)** and **Avg. securities** before trusting a cell."
+    )
+    matrix = _group_ic_matrix(breakdown)
+    if matrix.empty:
+        st.info(f"No {group_title.lower()} had enough securities to compute a Rank IC.")
+        return
+
+    largest = float(matrix.abs().max().max())
+    bound = max(_GROUP_IC_MIN_DOMAIN, largest)
+    _render_heatmap(
+        matrix,
+        value_title="Mean Rank IC",
+        domain=(-bound, bound),
+        row_title=group_title,
+        column_title="Metric",
+    )
+    with st.expander(f"Rank IC detail by {group_title.lower()}"):
+        st.dataframe(_group_breakdown_dataframe(breakdown), width="stretch", hide_index=True)
 
 
 def _render_inter_factor_section(inter: dict[str, Any]) -> None:
@@ -213,37 +308,11 @@ def _direction_verdict(mean_ic: float | None, higher_is_better: bool) -> str:
     return "consistent" if ic_says_higher_is_better == higher_is_better else "contradiction"
 
 
-def _is_derived(metric: dict[str, Any] | None) -> bool:
-    """A derived metric is a JSON formula: it has no DB id, only a recipe."""
-    return bool(metric and metric.get("derived"))
-
-
-def _metric_label(metric_index: dict[str, dict[str, Any]], metric_name: str) -> str:
-    """Selection label; derived metrics carry their formula so the recipe is visible."""
-    metric = metric_index.get(metric_name)
-    if not _is_derived(metric):
-        return metric_name
-    return f"{metric_name}  ·  derived: {_formula_text(metric or {})}"
-
-
-def _formula_text(metric: dict[str, Any]) -> str:
-    """Render a derived metric's recipe, for example 'EBIT / EV'."""
-    inputs = [str(name) for name in metric.get("metric_names") or []]
-    operations = [str(op) for op in metric.get("operations") or []]
-    if not inputs:
-        return "?"
-    parts = [inputs[0]]
-    for index, operation in enumerate(operations):
-        if index + 1 < len(inputs):
-            parts.extend([operation, inputs[index + 1]])
-    return " ".join(parts)
-
-
 def _flip_metric_direction(client, metric: dict[str, Any], new_value: bool) -> None:
     """Persist the inverted higher_is_better flag and refresh the page."""
     metric_name = str(metric.get("metric_name", ""))
     try:
-        if _is_derived(metric):
+        if is_derived_metric(metric):
             client.update_derived_metric(metric_name, higher_is_better=new_value)
         else:
             client.update_db_metric(int(metric["metric_id"]), higher_is_better=new_value)
@@ -300,7 +369,7 @@ def _render_direction_check(
         flag_col.markdown(f"Flag: `{flag_label}`")
 
         editable = metric is not None and (
-            _is_derived(metric) or metric.get("metric_id") is not None
+            is_derived_metric(metric) or metric.get("metric_id") is not None
         )
         if verdict == "contradiction" and editable:
             contradictions += 1
@@ -338,7 +407,10 @@ def _render_export(result: dict[str, Any]) -> None:
     st.divider()
     with st.container(border=True):
         st.markdown("**Export**")
-        st.caption("Summary, correlation matrix, and periods used, in one workbook.")
+        st.caption(
+            "Summary, correlation matrix, periods used, and the group breakdown when "
+            "requested, in one workbook."
+        )
         st.download_button(
             "Export to Excel",
             data=_ic_export_bytes(result),
@@ -359,6 +431,7 @@ def _render_ic_result(
     st.divider()
     _render_periods_used(result.get("periods", {}))
     _render_predictive_section(result.get("predictive", []))
+    _render_group_breakdown_section(result.get("group_breakdown"))
     st.divider()
     _render_inter_factor_section(result.get("inter_factor_correlation", {}))
     st.divider()
@@ -386,7 +459,7 @@ except ApiError as exc:
     metric_names = []
 
 metric_index = {m["metric_name"]: m for m in all_metrics if m.get("metric_name")}
-derived_count = sum(1 for m in all_metrics if _is_derived(m))
+derived_count = sum(1 for m in all_metrics if is_derived_metric(m))
 
 try:
     available_periods = client.list_periods()
@@ -436,7 +509,7 @@ with st.container(border=True):
             options=metric_names,
             default=[],
             key="ic_metrics_multiselect",
-            format_func=lambda name: _metric_label(metric_index, name),
+            format_func=lambda name: metric_label(metric_index, name),
             help=(
                 "Select at least two metrics for multivariate analysis. Derived metrics "
                 "are listed with their formula and are computed per period from their "
@@ -457,6 +530,16 @@ with st.container(border=True):
             step=1,
             key="ic_forward_months",
             help="Forward return horizon used for Rank IC.",
+        )
+        breakdown = st.selectbox(
+            "Breakdown",
+            options=[_TOTAL_BREAKDOWN_LABEL, *_GROUP_BY_AGGREGATION],
+            index=0,
+            key="ic_breakdown",
+            help=(
+                "Also compute Rank IC within each sector or industry, to see where a "
+                "factor works. The overall IC is always computed."
+            ),
         )
 
     selected_periods = st.multiselect(
@@ -482,6 +565,7 @@ current_inputs = {
     "Metrics": sorted(selected_metrics),
     "Forward horizon": f"{int(forward_months)} month(s)",
     "Periods": sorted(selected_periods) if selected_periods else _ALL_PERIODS_LABEL,
+    "Breakdown": breakdown,
 }
 
 if run:
@@ -497,6 +581,7 @@ if run:
                         metric_names=selected_metrics,
                         forward_months=int(forward_months),
                         periods=sorted(selected_periods) or None,
+                        group_by=_GROUP_BY_AGGREGATION.get(breakdown),
                     ),
                     inputs=current_inputs,
                 )

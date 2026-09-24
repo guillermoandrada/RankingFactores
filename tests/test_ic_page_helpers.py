@@ -144,3 +144,46 @@ def test_export_round_trips_the_correlation_matrix(page_helpers, ic_result) -> N
         correlation = workbook.parse("Correlation", index_col=0)
 
     assert correlation.loc["ROE", "Debt"] == pytest.approx(-0.42)
+
+
+# --- Group breakdown -------------------------------------------------------------------
+
+
+_BREAKDOWN = {
+    "group_by": "industry",
+    "rows": [
+        {"metric_name": "ROE", "group": "Banks", "mean_rank_ic": -0.05, "n_periods": 8, "mean_n": 20.0},
+        {"metric_name": "ROE", "group": "Software", "mean_rank_ic": 0.07, "n_periods": 8, "mean_n": 30.0},
+        {"metric_name": "Debt", "group": "Banks", "mean_rank_ic": 0.02, "n_periods": 7, "mean_n": 20.0},
+    ],
+}
+
+
+def test_group_breakdown_dataframe_names_the_group_column(page_helpers) -> None:
+    frame = page_helpers["_group_breakdown_dataframe"](_BREAKDOWN)
+
+    assert list(frame.columns)[:2] == ["Metric", "Industry"]
+    assert frame["Avg. securities"].tolist() == [20.0, 30.0, 20.0]
+
+
+def test_group_ic_matrix_has_a_row_per_group_and_a_column_per_metric(page_helpers) -> None:
+    matrix = page_helpers["_group_ic_matrix"](_BREAKDOWN)
+
+    assert list(matrix.columns) == ["ROE", "Debt"]
+    assert list(matrix.index) == ["Banks", "Software"]
+    assert matrix.loc["Software", "ROE"] == pytest.approx(0.07)
+    assert pd.isna(matrix.loc["Software", "Debt"])
+
+
+@pytest.mark.parametrize("breakdown", [None, {"group_by": "sector", "rows": []}])
+def test_group_breakdown_of_nothing_is_empty(page_helpers, breakdown) -> None:
+    assert page_helpers["_group_breakdown_dataframe"](breakdown).empty
+    assert page_helpers["_group_ic_matrix"](breakdown).empty
+
+
+def test_export_adds_the_group_breakdown_sheet(page_helpers, ic_result) -> None:
+    content = page_helpers["_ic_export_bytes"].__wrapped__({**ic_result, "group_breakdown": _BREAKDOWN})
+
+    with pd.ExcelFile(io.BytesIO(content)) as workbook:
+        assert workbook.sheet_names[-1] == "By industry"
+        assert workbook.parse("By industry")["Industry"].tolist() == ["Banks", "Software", "Banks"]

@@ -81,10 +81,20 @@ def _resolve_dependencies(
     visited: set[str],
     order: list[str],
 ) -> None:
-    """Append metric names in dependency order to order (mutates order and visited)."""
+    """
+    Append metric names in dependency order to order (mutates order and visited).
+
+    `visited` is the recursion stack, not the set of everything already seen: a
+    formula may name the same dependency twice — `Change` and `Trend` metrics do,
+    as in (Current - Past) / Past — and that is a diamond, not a cycle. Entries are
+    therefore unwound on the way out, and `order` doubles as the resolved set so a
+    shared dependency is computed once.
+    """
     if metric_name in base_names:
         if metric_name not in order:
             order.append(metric_name)
+        return
+    if metric_name in order:
         return
     if metric_name in visited:
         raise ValueError(f"Circular dependency in derived metric '{metric_name}'.")
@@ -94,6 +104,7 @@ def _resolve_dependencies(
         raise ValueError(f"Metric '{metric_name}' not found (not in DB nor derived formulas).")
     for dep in formula.get("metric_names", []):
         _resolve_dependencies(dep, formulas, base_names, visited, order)
+    visited.discard(metric_name)
     order.append(metric_name)
 
 
@@ -136,10 +147,14 @@ def fetch_metric_matrix(
     index_name: Optional[str] = None,
     industry_name: Optional[str] = None,
     sector_name: Optional[str] = None,
+    apply_na_handling: bool = True,
 ) -> tuple[pd.DataFrame, dict[str, bool]]:
     """
     Fetch base metrics from DB, compute derived on the fly.
     Returns (wide DataFrame with metric columns, direction_map).
+
+    With ``apply_na_handling=False`` the configured NA fills are skipped, so
+    analyses of raw distributions see missing values as missing.
     """
     if not metric_names:
         raise ValueError("metric_names cannot be empty.")
@@ -240,7 +255,8 @@ def fetch_metric_matrix(
     }
 
     # Apply per-metric NA handling (eliminate drops rows, others fill)
-    df_wide = _apply_na_handling(df_wide, na_handling_map, all_to_fetch)
+    if apply_na_handling:
+        df_wide = _apply_na_handling(df_wide, na_handling_map, all_to_fetch)
     df_wide.attrs["missing_metrics"] = sorted(missing_metrics)
     df_wide.attrs["universe_size"] = universe_size
     df_wide.attrs["missing_counts"] = missing_counts

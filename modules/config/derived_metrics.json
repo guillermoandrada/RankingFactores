@@ -430,8 +430,8 @@
     "ROIC/WACC Change": {
       "metric_names": [
         "Current ROIC/WACC",
-        "5Y Average ROIC/WACC",
-        "5Y Average ROIC/WACC"
+        "Past ROIC/WACC",
+        "Past ROIC/WACC"
       ],
       "operations": [
         "-",
@@ -469,8 +469,8 @@
     "FCF/Net Income Change": {
       "metric_names": [
         "Current FCF/Net Income",
-        "5Y Average FCF/Net Income",
-        "5Y Average FCF/Net Income"
+        "Past FCF/Net Income",
+        "Past FCF/Net Income"
       ],
       "operations": [
         "-",
@@ -510,6 +510,91 @@
         "Estimated Net Debt / EBITDA",
         "Current Net Debt / EBITDA",
         "Current Net Debt / EBITDA"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Current FCFF/Net Income": {
+      "metric_names": [
+        "Free Cash Flow to the Firm",
+        "Current Net Income"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Past FCFF/Net Income": {
+      "metric_names": [
+        "Past Free Cash Flow to the Firm",
+        "Past Net Income"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Estimated FCFF/Net Income": {
+      "metric_names": [
+        "Estimated Free Cash Flow to the Firm",
+        "Estimated Net Income"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "FCFF/Net Income Change": {
+      "metric_names": [
+        "Current FCFF/Net Income",
+        "Past FCFF/Net Income",
+        "Past FCFF/Net Income"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "FCFF/Net Income Trend": {
+      "metric_names": [
+        "Estimated FCFF/Net Income",
+        "Current FCFF/Net Income",
+        "Current FCFF/Net Income"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "P/S Change": {
+      "metric_names": [
+        "Current P/S Ratio",
+        "Past P/S Ratio",
+        "Past P/S Ratio"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "P/S Trend": {
+      "metric_names": [
+        "Estimated P/S Ratio",
+        "Current P/S Ratio",
+        "Current P/S Ratio"
       ],
       "operations": [
         "-",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -11,4 +13,8 @@ class ICRequest(BaseModel):
     periods: list[str] | None = Field(
         default=None,
         description="Optional period filter. None uses all available periods per metric.",
+    )
+    group_by: Literal["sector", "industry"] | None = Field(
+        default=None,
+        description="Optional breakdown: also compute Rank IC within each sector or industry.",
     )

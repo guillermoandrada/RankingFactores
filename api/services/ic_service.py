@@ -16,11 +16,13 @@ def _cached_analyze_multivariate(
     metric_names: tuple[str, ...],
     forward_months: int,
     periods: tuple[str, ...] | None,
+    group_by: str | None,
 ) -> dict:
     return analyzer.analyze_multivariate(
         metric_names=list(metric_names),
         forward_months=forward_months,
         periods=list(periods) if periods is not None else None,
+        group_by=group_by,
     )
 
 
@@ -40,6 +42,7 @@ class ICService:
         metric_names: list[str],
         forward_months: int,
         periods: list[str] | None = None,
+        group_by: str | None = None,
     ) -> dict:
         """Run multivariate IC analysis. Results are cached per unique argument combination."""
         return _cached_analyze_multivariate(
@@ -47,6 +50,7 @@ class ICService:
             tuple(metric_names),
             int(forward_months),
             tuple(periods) if periods is not None else None,
+            group_by,
         )
 
     def invalidate_cache(self) -> None:

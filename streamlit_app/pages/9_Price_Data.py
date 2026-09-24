@@ -20,7 +20,7 @@ _DOWNLOADED_SOURCE = "yfinance"
 client = get_api_client()
 render_sidebar_api_status(client)
 
-upload_tab, manage_tab = st.tabs(["Upload", "Manage"])
+upload_tab, manage_tab, total_returns_tab = st.tabs(["Upload", "Manage", "Total returns"])
 
 # ── Upload ────────────────────────────────────────────────────────────────────
 with upload_tab:
@@ -128,3 +128,74 @@ with manage_tab:
                         st.rerun()
                     except ApiError as exc:
                         st.error(str(exc))
+
+# ── Total returns ─────────────────────────────────────────────────────────────
+with total_returns_tab:
+    st.markdown(
+        "Upload a Bloomberg BQL total-return export. Each sheet holds side-by-side "
+        "blocks of five columns: **Row 1** = benchmark, end date, start date; "
+        "**Row 2** = `ID`, name, sector, industry, `total_return(...)`; "
+        "**Row 3+** = Bloomberg identifier + total return. The horizon (3m, 6m, 12m…) "
+        "is derived from each block's dates."
+    )
+    uploaded_returns = st.file_uploader(
+        "Bloomberg total-return file",
+        type=["xlsx", "xls"],
+        key="total_return_upload",
+    )
+    if uploaded_returns is not None:
+        if st.button("Import total returns", type="primary"):
+            with st.spinner("Parsing and persisting total returns…"):
+                try:
+                    result = client.upload_total_return_file(
+                        uploaded_returns.getvalue(), uploaded_returns.name
+                    )
+                    tickers = result.get("tickers_imported", [])
+                    rows = result.get("rows_written", 0)
+                    windows = result.get("windows_imported", 0)
+                    horizons = ", ".join(f"{h}m" for h in result.get("horizons_months", []))
+                    dr = result.get("date_range", {})
+                    st.success(
+                        f"Imported **{rows:,}** rows for **{len(tickers)}** tickers across "
+                        f"**{windows}** windows ({horizons}; "
+                        f"{dr.get('min', '?')} → {dr.get('max', '?')})."
+                    )
+                    skipped = result.get("tickers_skipped", [])
+                    if skipped:
+                        st.warning(f"Unrecognised identifiers skipped: {', '.join(skipped)}")
+                    st.session_state.pop("total_return_windows", None)
+                except ApiError as exc:
+                    st.error(str(exc))
+
+    if st.button("Reload list", key="total_return_refresh"):
+        st.session_state.pop("total_return_windows", None)
+
+    if "total_return_windows" not in st.session_state:
+        try:
+            st.session_state["total_return_windows"] = client.list_total_return_windows()
+        except ApiError as exc:
+            st.error(str(exc))
+            st.session_state["total_return_windows"] = []
+
+    windows_data = st.session_state.get("total_return_windows", [])
+    if not windows_data:
+        st.info("No total returns stored yet.")
+    else:
+        windows_df = pd.DataFrame(windows_data)
+        st.dataframe(windows_df, use_container_width=True, hide_index=True)
+
+        horizon_options = sorted(windows_df["horizon_months"].unique().tolist())
+        selected_horizon = st.selectbox(
+            "Horizon to delete",
+            options=[None, *horizon_options],
+            format_func=lambda h: "All horizons" if h is None else f"{h}m",
+            key="total_return_delete_horizon",
+        )
+        if st.button("Delete total returns", type="primary", key="total_return_delete_btn"):
+            try:
+                result = client.delete_total_return_windows(selected_horizon)
+                st.success(f"Deleted **{result.get('deleted_rows', 0):,}** rows.")
+                st.session_state.pop("total_return_windows", None)
+                st.rerun()
+            except ApiError as exc:
+                st.error(str(exc))

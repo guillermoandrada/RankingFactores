@@ -15,7 +15,7 @@ from typing import Iterable, Optional
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
-from sqlalchemy import MetaData, and_, select
+from sqlalchemy import MetaData, and_, func, select
 from sqlalchemy.engine import Engine
 
 from modules.config.derived_metrics import DerivedMetricStore
@@ -36,6 +36,23 @@ class ICPoint:
     end_date: str
     ic: float
     n: int
+
+
+@dataclass(frozen=True)
+class ICSample:
+    """One period's usable cross-section: tickers with both a metric value and a return."""
+
+    period: str
+    start_date: str
+    end_date: str
+    frame: pd.DataFrame  # columns: ticker, value, forward_return
+
+
+class _PeriodSkipped(Exception):
+    """A period that yields no IC sample; the message says why, for the skip warning."""
+
+
+GROUP_BY_OPTIONS = frozenset({"sector", "industry"})
 
 
 @dataclass(frozen=True)
@@ -72,6 +89,28 @@ def _summarise_periods(periods: list[str], limit: int = 6) -> str:
     return shown if len(periods) <= limit else f"{shown} … (+{len(periods) - limit} more)"
 
 
+def _skip_warnings(skipped: dict[str, list[str]], total: int) -> list[str]:
+    return [
+        f"Skipped {len(affected)} of {total} period(s) because "
+        f"{reason}: {_summarise_periods(affected)}"
+        for reason, affected in skipped.items()
+    ]
+
+
+def _summarise_ic_points(points: list[ICPoint]) -> dict:
+    """Time-series mean, volatility, and Information Ratio of a Rank IC series."""
+    ic_vals = [p.ic for p in points]
+    mean_ic = float(np.mean(ic_vals)) if ic_vals else None
+    std_ic = float(np.std(ic_vals, ddof=1)) if len(ic_vals) >= 2 else None
+    ir = (mean_ic / std_ic) if (mean_ic is not None and std_ic not in (None, 0.0)) else None
+    return {
+        "mean_rank_ic": mean_ic,
+        "ic_std": std_ic,
+        "information_ratio": ir,
+        "n_periods": len(points),
+    }
+
+
 class ICAnalyzer:
     """
     Compute Rank IC (Spearman) vs forward returns and inter-factor Spearman matrices.
@@ -82,6 +121,7 @@ class ICAnalyzer:
     """
 
     _DEFAULT_PUBLICATION_LAG_DAYS = 45
+    MIN_GROUP_SECURITIES = 5
 
     def __init__(
         self,
@@ -137,6 +177,7 @@ class ICAnalyzer:
         metric_names: list[str],
         forward_months: int,
         periods: Optional[Iterable[str]] = None,
+        group_by: Optional[str] = None,
     ) -> dict:
         """
         Multivariate factor analysis.
@@ -154,6 +195,8 @@ class ICAnalyzer:
             forward_months: Forward horizon in months.
             periods: Optional filter; if None, periods are taken per metric / intersection
                 as described below.
+            group_by: Optional "sector" or "industry". When set, Rank IC is also computed
+                within each group's cross-section per period and summarised per group.
 
         Returns:
             {
@@ -165,12 +208,15 @@ class ICAnalyzer:
                   "per_metric": list[dict],  # available/used periods per metric
                   "inter_factor": dict,  # available/used shared periods for correlation matrix
               },
+              "group_breakdown": None | {"group_by": str, "rows": list[dict]},
               "warnings": list[str],
             }
         """
         forward_months = int(forward_months)
         if forward_months <= 0:
             raise ValueError("forward_months must be positive.")
+        if group_by is not None and group_by not in GROUP_BY_OPTIONS:
+            raise ValueError("group_by must be 'sector' or 'industry'.")
 
         unique_names = list(dict.fromkeys(str(n).strip() for n in metric_names if str(n).strip()))
         if len(unique_names) < 2:
@@ -183,6 +229,7 @@ class ICAnalyzer:
 
         predictive: list[dict] = []
         periods_per_metric: list[dict] = []
+        group_rows: list[dict] = []
         for name in unique_names:
             plan = plans.get(name)
             if plan is None:
@@ -192,12 +239,18 @@ class ICAnalyzer:
             else:
                 available_periods = sorted({p for p in periods if p})
             use_periods = available_periods
-            points, w = self._ic_series_for_metric(
+            samples, w = self._ic_samples_for_metric(
                 plan=plan,
                 forward_months=forward_months,
                 periods=use_periods,
             )
-            warnings.extend(f"{name}: {message}" for message in w)
+            points, point_warnings = self._ic_points(samples, total_periods=len(use_periods))
+            warnings.extend(f"{name}: {message}" for message in w + point_warnings)
+            if group_by is not None:
+                group_rows.extend(
+                    {"metric_name": name, "group": group, **summary}
+                    for group, summary in self._group_ic_summaries(samples, group_by).items()
+                )
             used_periods = [p.period for p in points]
             periods_per_metric.append(
                 {
@@ -206,21 +259,10 @@ class ICAnalyzer:
                     "used_periods": list(used_periods),
                 }
             )
-            ic_vals = [p.ic for p in points]
-            mean_ic = float(np.mean(ic_vals)) if ic_vals else None
-            std_ic = float(np.std(ic_vals, ddof=1)) if len(ic_vals) >= 2 else None
-            ir = (
-                (mean_ic / std_ic)
-                if (mean_ic is not None and std_ic not in (None, 0.0))
-                else None
-            )
             predictive.append(
                 {
                     "metric_name": name,
-                    "mean_rank_ic": mean_ic,
-                    "ic_std": std_ic,
-                    "information_ratio": ir,
-                    "n_periods": len(points),
+                    **_summarise_ic_points(points),
                     "available_periods": list(available_periods),
                     "used_periods": list(used_periods),
                     "series": [
@@ -264,6 +306,9 @@ class ICAnalyzer:
                     "available_periods": inter_available_periods,
                 },
             },
+            "group_breakdown": (
+                None if group_by is None else {"group_by": group_by, "rows": group_rows}
+            ),
             "warnings": warnings,
         }
 
@@ -300,10 +345,10 @@ class ICAnalyzer:
             periods=periods,
         )
 
-        ic_series = [p.ic for p in points]
-        ic_mean = float(np.mean(ic_series)) if ic_series else None
-        ic_std = float(np.std(ic_series, ddof=1)) if len(ic_series) >= 2 else None
-        ir = (ic_mean / ic_std) if (ic_mean is not None and ic_std not in (None, 0.0)) else None
+        summary = _summarise_ic_points(points)
+        ic_mean, ic_std, ir = (
+            summary["mean_rank_ic"], summary["ic_std"], summary["information_ratio"]
+        )
 
         return {
             "metric_id": int(metric_id),
@@ -331,76 +376,147 @@ class ICAnalyzer:
         forward_months: int,
         periods: Optional[Iterable[str]],
     ) -> tuple[list[ICPoint], list[str]]:
+        samples, warnings = self._ic_samples_for_metric(
+            plan=plan, forward_months=forward_months, periods=periods
+        )
         periods_list = sorted({p for p in (periods or []) if p})
-        warnings: list[str] = []
-        points: list[ICPoint] = []
+        points, point_warnings = self._ic_points(samples, total_periods=len(periods_list))
+        return points, warnings + point_warnings
+
+    def _ic_samples_for_metric(
+        self,
+        *,
+        plan: MetricPlan,
+        forward_months: int,
+        periods: Optional[Iterable[str]],
+    ) -> tuple[list[ICSample], list[str]]:
+        """Usable cross-section per period, plus one warning per reason a period was skipped."""
+        periods_list = sorted({p for p in (periods or []) if p})
+        samples: list[ICSample] = []
         # Grouped by reason rather than reported per period, so a wide run cannot
         # bury the explanation under one warning per period.
         skipped: dict[str, list[str]] = {}
-
-        def skip(period: str, reason: str) -> None:
-            skipped.setdefault(reason, []).append(period)
-
         for period in periods_list:
             try:
-                start_date, end_date = self._parse_period_to_dates(period, forward_months)
-            except Exception as exc:
-                self._logger.debug("Skipping period '%s': cannot parse dates (%s)", period, exc)
-                skip(period, "the period label could not be parsed as a date")
-                continue
-
-            fundamentals = self._load_cross_section_for_plan(plan=plan, period=period)
-            if fundamentals.empty:
-                skip(period, "the metric has no values in that period")
-                continue
-
-            fundamentals["value"] = pd.to_numeric(fundamentals["value"], errors="coerce")
-            fundamentals = fundamentals.dropna(subset=["ticker", "value"])
-            if fundamentals.empty:
-                skip(period, "the metric has no numeric values in that period")
-                continue
-
-            returns = self._compute_forward_returns(
-                tickers=fundamentals["ticker"].astype(str).tolist(),
-                start_date=start_date,
-                end_date=end_date,
-            )
-            if returns.empty:
-                skip(
-                    period,
-                    f"no forward returns were available for {start_date} to {end_date} "
-                    "(check price coverage)",
+                samples.append(
+                    self._ic_sample(plan=plan, period=period, forward_months=forward_months)
                 )
-                continue
+            except _PeriodSkipped as exc:
+                skipped.setdefault(str(exc), []).append(period)
+        return samples, _skip_warnings(skipped, len(periods_list))
 
-            merged = fundamentals.merge(returns, on="ticker", how="inner")
-            merged["forward_return"] = pd.to_numeric(merged["forward_return"], errors="coerce")
-            merged = merged.dropna(subset=["value", "forward_return"])
-            if len(merged) < 2:
-                skip(period, "fewer than two securities had both a metric value and a return")
-                continue
+    def _ic_sample(self, *, plan: MetricPlan, period: str, forward_months: int) -> ICSample:
+        """Metric values joined to forward returns for one period. Raises _PeriodSkipped."""
+        try:
+            start_date, end_date = self._parse_period_to_dates(period, forward_months)
+        except Exception as exc:
+            self._logger.debug("Skipping period '%s': cannot parse dates (%s)", period, exc)
+            raise _PeriodSkipped("the period label could not be parsed as a date") from exc
 
-            ic_val = self._spearman_ic(merged["value"].to_numpy(), merged["forward_return"].to_numpy())
-            if ic_val is None:
-                skip(period, "the rank correlation was undefined (no variation)")
-                continue
+        fundamentals = self._load_cross_section_for_plan(plan=plan, period=period)
+        if fundamentals.empty:
+            raise _PeriodSkipped("the metric has no values in that period")
 
-            points.append(
-                ICPoint(
-                    period=period,
-                    start_date=start_date,
-                    end_date=end_date,
-                    ic=float(ic_val),
-                    n=int(len(merged)),
-                )
+        fundamentals["value"] = pd.to_numeric(fundamentals["value"], errors="coerce")
+        fundamentals = fundamentals.dropna(subset=["ticker", "value"])
+        if fundamentals.empty:
+            raise _PeriodSkipped("the metric has no numeric values in that period")
+
+        returns = self._compute_forward_returns(
+            tickers=fundamentals["ticker"].astype(str).tolist(),
+            start_date=start_date,
+            end_date=end_date,
+        )
+        if returns.empty:
+            raise _PeriodSkipped(
+                f"no forward returns were available for {start_date} to {end_date} "
+                "(check price coverage)"
             )
 
-        for reason, affected in skipped.items():
-            warnings.append(
-                f"Skipped {len(affected)} of {len(periods_list)} period(s) because "
-                f"{reason}: {_summarise_periods(affected)}"
+        merged = fundamentals.merge(returns, on="ticker", how="inner")
+        merged["forward_return"] = pd.to_numeric(merged["forward_return"], errors="coerce")
+        merged = merged.dropna(subset=["value", "forward_return"])
+        if len(merged) < 2:
+            raise _PeriodSkipped("fewer than two securities had both a metric value and a return")
+        return ICSample(period=period, start_date=start_date, end_date=end_date, frame=merged)
+
+    def _ic_points(
+        self, samples: list[ICSample], *, total_periods: int
+    ) -> tuple[list[ICPoint], list[str]]:
+        """Rank IC per sample; samples whose correlation is undefined are reported."""
+        points: list[ICPoint] = []
+        undefined: list[str] = []
+        for sample in samples:
+            point = self._ic_point(sample, sample.frame)
+            if point is None:
+                undefined.append(sample.period)
+            else:
+                points.append(point)
+        skipped = {"the rank correlation was undefined (no variation)": undefined} if undefined else {}
+        return points, _skip_warnings(skipped, total_periods)
+
+    def _ic_point(self, sample: ICSample, frame: pd.DataFrame) -> Optional[ICPoint]:
+        ic_val = self._spearman_ic(frame["value"].to_numpy(), frame["forward_return"].to_numpy())
+        if ic_val is None:
+            return None
+        return ICPoint(
+            period=sample.period,
+            start_date=sample.start_date,
+            end_date=sample.end_date,
+            ic=float(ic_val),
+            n=int(len(frame)),
+        )
+
+    def _group_ic_summaries(
+        self, samples: list[ICSample], group_by: str
+    ) -> dict[str, dict]:
+        """
+        Rank IC within each sector/industry cross-section, summarised per group.
+
+        Groups with fewer than MIN_GROUP_SECURITIES securities in a period are left out
+        of that period: a rank correlation over a handful of names is mostly noise.
+        """
+        points_by_group: dict[str, list[ICPoint]] = {}
+        for sample in samples:
+            labels = self._load_security_groups(period=sample.period, group_by=group_by)
+            frame = sample.frame.merge(labels, on="ticker", how="left")
+            frame["group"] = frame["group"].fillna("Unknown")
+            for group, sub in frame.groupby("group", sort=True):
+                if len(sub) < self.MIN_GROUP_SECURITIES:
+                    continue
+                point = self._ic_point(sample, sub)
+                if point is not None:
+                    points_by_group.setdefault(str(group), []).append(point)
+        return {
+            group: {
+                **_summarise_ic_points(points),
+                "mean_n": float(np.mean([p.n for p in points])),
+            }
+            for group, points in sorted(points_by_group.items())
+        }
+
+    def _load_security_groups(self, *, period: str, group_by: str) -> pd.DataFrame:
+        """Ticker -> sector/industry for a period: period classification first, then security."""
+        tbl_s = self._tbl_sec
+        tbl_c = self._metadata.tables["security_classification"]
+        if group_by == "sector":
+            tbl_label = self._metadata.tables["sectors"]
+            label_col = tbl_label.c.sector_name
+            join_label = tbl_label.c.sector_id == func.coalesce(tbl_c.c.sector_id, tbl_s.c.sector_id)
+        else:
+            tbl_label = self._metadata.tables["industries"]
+            label_col = tbl_label.c.industry_name
+            join_label = tbl_label.c.industry_id == func.coalesce(
+                tbl_c.c.industry_id, tbl_s.c.industry_id
             )
-        return points, warnings
+        q = (
+            select(tbl_s.c.ticker.label("ticker"), label_col.label("group"))
+            .select_from(tbl_s)
+            .outerjoin(tbl_c, and_(tbl_c.c.security_id == tbl_s.c.id, tbl_c.c.period == period))
+            .outerjoin(tbl_label, join_label)
+        )
+        with self._engine.connect() as conn:
+            return pd.read_sql_query(q, con=conn).drop_duplicates("ticker")
 
     def _inter_factor_spearman_matrix(
         self,

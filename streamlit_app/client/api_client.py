@@ -454,6 +454,7 @@ class RankingApiClient:
         metric_names: list[str],
         forward_months: int,
         periods: list[str] | None = None,
+        group_by: str | None = None,
     ) -> dict[str, Any]:
         """Run multivariate IC analysis (Rank IC + inter-factor Spearman correlation)."""
         body: dict[str, Any] = {
@@ -462,6 +463,8 @@ class RankingApiClient:
         }
         if periods is not None:
             body["periods"] = periods
+        if group_by is not None:
+            body["group_by"] = group_by
         return self._request("POST", "/ic", json=body, long=True)
 
     def upload_price_file(self, file_content: bytes, filename: str) -> dict[str, Any]:
@@ -506,6 +509,25 @@ class RankingApiClient:
         """
         params = {"source": source} if source else None
         return self._request("DELETE", "/prices/tickers", json=tickers, params=params)
+
+    def upload_total_return_file(self, file_content: bytes, filename: str) -> dict[str, Any]:
+        """Upload a Bloomberg block-format total-return Excel file."""
+        return self._request(
+            "POST",
+            "/total-returns/upload",
+            files={"file": (filename, file_content, "application/octet-stream")},
+            long=True,
+        )
+
+    def list_total_return_windows(self) -> list[dict[str, Any]]:
+        """List every stored total-return window and its ticker coverage."""
+        data = self._request("GET", "/total-returns/windows")
+        return data.get("windows", [])
+
+    def delete_total_return_windows(self, horizon_months: int | None = None) -> dict[str, Any]:
+        """Delete stored total returns, optionally only those of one horizon."""
+        params = {"horizon_months": horizon_months} if horizon_months is not None else None
+        return self._request("DELETE", "/total-returns/windows", params=params)
 
     def export_ranking_xlsx(
         self,

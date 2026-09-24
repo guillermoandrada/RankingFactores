@@ -168,6 +168,7 @@ and created on first `FinancialDatabase()` construction.
 | `fundamental_values` | (security, metric, period) | `value` may be SQL NULL; NA policy applied at read time |
 | `indices`, `index_membership` | (index, security, period) | universe filtering |
 | `price_data` | (ticker, price_date) unique | close prices + `source`. See PRICING.md |
+| `total_returns` | (ticker, start_date, end_date) unique | Bloomberg total return per window + `horizon_months` (3/6/12). Stored only; not yet read by IC or backtests |
 
 **Periods are strings, not dates.** Bloomberg imports store `YYYY/MM/DD`
 ([bloomberg.py](../modules/infrastructure/ingestion/readers/bloomberg.py#L11-L28));
@@ -286,6 +287,7 @@ Every row is daily, and `source` decides priority. **Fully documented in
 | [backtests](../api/routers/backtests.py) | `POST /backtests/portfolio`, `POST /backtests/strategy` |
 | [ic](../api/routers/ic.py) | `POST /ic` |
 | [prices](../api/routers/prices.py) | `POST /prices/upload`, `GET /prices/latest`, `GET /prices/tickers`, `DELETE /prices/tickers` |
+| [total_returns](../api/routers/total_returns.py) | `POST /total-returns/upload`, `GET /total-returns/windows`, `DELETE /total-returns/windows` |
 
 Conventions in force:
 

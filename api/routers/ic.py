@@ -27,6 +27,7 @@ async def run_ic_analysis(
                 metric_names=request.metric_names,
                 forward_months=request.forward_months,
                 periods=request.periods,
+                group_by=request.group_by,
             ),
         )
     except ValueError as exc:

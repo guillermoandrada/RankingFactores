@@ -19,7 +19,7 @@ from modules.shared.dataframes import dataframe_to_jsonable_records
 
 # SQLite caps the bound parameters of a single statement; a full daily price
 # history easily exceeds that cap when deleted in one ``IN`` clause.
-_PRICE_DELETE_BATCH_SIZE = 500
+_DELETE_BATCH_SIZE = 500
 
 
 class FinancialDatabase:
@@ -999,8 +999,8 @@ class FinancialDatabase:
     @staticmethod
     def _delete_price_dates(conn, tbl: Table, ticker: str, dates: list[str]) -> None:
         """Delete one ticker's rows for the given dates, in bounded batches."""
-        for start in range(0, len(dates), _PRICE_DELETE_BATCH_SIZE):
-            batch = dates[start : start + _PRICE_DELETE_BATCH_SIZE]
+        for start in range(0, len(dates), _DELETE_BATCH_SIZE):
+            batch = dates[start : start + _DELETE_BATCH_SIZE]
             conn.execute(
                 delete(tbl).where(
                     and_(tbl.c.ticker == ticker, tbl.c.price_date.in_(batch))
@@ -1113,6 +1113,110 @@ class FinancialDatabase:
             conditions.append(tbl.c.source == source)
         with self._engine.begin() as conn:
             result = conn.execute(delete(tbl).where(and_(*conditions)))
+        return result.rowcount or 0
+
+    def upsert_total_returns(self, df: pd.DataFrame) -> int:
+        """
+        Insert or replace total returns from a DataFrame with columns
+        ['ticker', 'start_date', 'end_date', 'horizon_months', 'total_return', 'source'].
+        On conflict (ticker + start_date + end_date) the existing row is replaced,
+        so re-uploading a corrected export overwrites the previous values.
+        Returns the number of rows written.
+        """
+        to_write = self._prepare_total_return_frame(df)
+        if to_write.empty:
+            return 0
+
+        tbl = self._get_table("total_returns")
+        with self._engine.begin() as conn:
+            windows = to_write.groupby(["start_date", "end_date"], sort=False)
+            for (start_date, end_date), group in windows:
+                self._delete_total_return_window(
+                    conn, tbl, str(start_date), str(end_date), group["ticker"].tolist()
+                )
+            to_write.to_sql("total_returns", con=conn, if_exists="append", index=False)
+        return len(to_write)
+
+    @staticmethod
+    def _prepare_total_return_frame(df: pd.DataFrame) -> pd.DataFrame:
+        """Coerce a total-return frame to the stored column set, dropping unusable rows."""
+        columns = [
+            "ticker",
+            "start_date",
+            "end_date",
+            "horizon_months",
+            "total_return",
+            "source",
+        ]
+        if df.empty:
+            return pd.DataFrame(columns=columns)
+        if not set(columns).issubset(df.columns):
+            raise ValueError(f"DataFrame must have columns: {set(columns)}")
+
+        prepared = df[columns].copy()
+        prepared["total_return"] = pd.to_numeric(prepared["total_return"], errors="coerce")
+        prepared = prepared.dropna(subset=["total_return"])
+        return prepared.drop_duplicates(
+            subset=["ticker", "start_date", "end_date"], keep="last"
+        )
+
+    @staticmethod
+    def _delete_total_return_window(
+        conn, tbl: Table, start_date: str, end_date: str, tickers: list[str]
+    ) -> None:
+        """Delete one window's rows for the given tickers, in bounded batches."""
+        for start in range(0, len(tickers), _DELETE_BATCH_SIZE):
+            batch = tickers[start : start + _DELETE_BATCH_SIZE]
+            conn.execute(
+                delete(tbl).where(
+                    and_(
+                        tbl.c.start_date == start_date,
+                        tbl.c.end_date == end_date,
+                        tbl.c.ticker.in_(batch),
+                    )
+                )
+            )
+
+    def list_total_return_windows(self) -> list[dict]:
+        """
+        Return [{horizon_months, start_date, end_date, ticker_count}] for
+        total_returns, newest window first within each horizon.
+        """
+        tbl = self._get_table("total_returns")
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(
+                    tbl.c.horizon_months,
+                    tbl.c.start_date,
+                    tbl.c.end_date,
+                    func.count().label("ticker_count"),
+                )
+                .group_by(tbl.c.horizon_months, tbl.c.start_date, tbl.c.end_date)
+                .order_by(tbl.c.horizon_months, tbl.c.end_date.desc())
+            ).fetchall()
+        return [
+            {
+                "horizon_months": r[0],
+                "start_date": r[1],
+                "end_date": r[2],
+                "ticker_count": r[3],
+            }
+            for r in rows
+        ]
+
+    def delete_total_returns(self, *, horizon_months: int | None = None) -> int:
+        """
+        Delete total_returns rows. Returns rows deleted.
+
+        ``horizon_months`` narrows the deletion to one horizon; omit it to clear
+        the whole table.
+        """
+        tbl = self._get_table("total_returns")
+        statement = delete(tbl)
+        if horizon_months is not None:
+            statement = statement.where(tbl.c.horizon_months == horizon_months)
+        with self._engine.begin() as conn:
+            result = conn.execute(statement)
         return result.rowcount or 0
 
     def _write_index_membership(

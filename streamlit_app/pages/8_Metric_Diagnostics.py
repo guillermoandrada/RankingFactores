@@ -7,10 +7,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import streamlit as st
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, func, select
 
+from modules.config.derived_metrics import DerivedMetricStore
+from modules.domain.analytics.metric_loader import fetch_metric_matrix
 from modules.infrastructure.db import FinancialDatabase
 from streamlit_app.ui import (
+    is_derived_metric,
+    metric_label,
     read_result,
     render_page_header,
     render_result_caption,
@@ -21,69 +25,101 @@ _DIAGNOSTICS_RESULT_KEY = "metric_diagnostics_result"
 
 
 # ---------- Data loading ----------
+#
+# Every metric, DB or derived, is loaded as the same long frame of raw rows
+# (period, security_id, value), NaN kept, so the stats below never branch on kind.
 
-def _metric_id_by_name(db: FinancialDatabase) -> dict[str, int]:
-    metrics = db.list_metrics()
-    out: dict[str, int] = {}
-    for m in metrics:
-        name = (m.get("metric_name") or "").strip()
-        mid = m.get("metric_id")
-        if name and isinstance(mid, int):
-            out[name] = mid
-    return out
+_ROW_COLUMNS = ["period", "security_id", "value"]
 
 
-def _load_period_counts(db: FinancialDatabase, *, metric_id: int) -> pd.DataFrame:
-    meta = db._metadata
-    tbl = meta.tables["fundamental_values"]
-    na_count = func.sum(case((tbl.c.value.is_(None), 1), else_=0)).label("na_count")
-    total = func.count(tbl.c.id).label("total")
+def _metric_index(
+    db: FinancialDatabase, derived_store: DerivedMetricStore
+) -> dict[str, dict[str, Any]]:
+    """DB metrics and derived formulas by name, as GET /db/metrics/available lists them."""
+    index: dict[str, dict[str, Any]] = {}
+    for metric in db.list_metrics():
+        name = (metric.get("metric_name") or "").strip()
+        if name and isinstance(metric.get("metric_id"), int):
+            index[name] = metric
+    for name, formula in derived_store.list_formulas().items():
+        index.setdefault(name, {**formula, "metric_name": name, "derived": True})
+    return index
+
+
+def _load_db_metric_rows(db: FinancialDatabase, *, metric_id: int) -> pd.DataFrame:
+    tbl = db._metadata.tables["fundamental_values"]
     q = (
-        select(tbl.c.period.label("period"), total, na_count)
+        select(
+            tbl.c.period.label("period"),
+            tbl.c.security_id.label("security_id"),
+            tbl.c.value.label("value"),
+        )
         .where(tbl.c.metric_id == int(metric_id))
-        .group_by(tbl.c.period)
         .order_by(tbl.c.period)
     )
     with db.engine.connect() as conn:
-        df = pd.read_sql_query(q, con=conn)
-    if df.empty:
-        return df
-    df["period"] = df["period"].astype(str)
-    df["total"] = pd.to_numeric(df["total"], errors="coerce").fillna(0).astype(int)
-    df["na_count"] = pd.to_numeric(df["na_count"], errors="coerce").fillna(0).astype(int)
-    return df
+        return pd.read_sql_query(q, con=conn)
 
 
-def _load_metric_values(db: FinancialDatabase, *, metric_id: int) -> pd.DataFrame:
-    meta = db._metadata
-    tbl = meta.tables["fundamental_values"]
-    q = (
-        select(tbl.c.period.label("period"), tbl.c.value.label("value"))
-        .where(and_(tbl.c.metric_id == int(metric_id), tbl.c.value.is_not(None)))
-        .order_by(tbl.c.period)
-    )
-    with db.engine.connect() as conn:
-        df = pd.read_sql_query(q, con=conn)
-    if df.empty:
-        return df
-    df["period"] = df["period"].astype(str)
-    df["value"] = pd.to_numeric(df["value"], errors="coerce")
-    df = df.dropna(subset=["period", "value"])
-    return df
-
-
-def _load_metric_overall_mean(db: FinancialDatabase, *, metric_id: int) -> float | None:
-    meta = db._metadata
-    tbl = meta.tables["fundamental_values"]
-    q = select(func.avg(tbl.c.value)).where(tbl.c.metric_id == int(metric_id))
-    with db.engine.connect() as conn:
-        val = conn.execute(q).scalar()
-    return float(val) if val is not None else None
-
-
-def _load_metric_values_with_group(
-    db: FinancialDatabase, *, metric_id: int, group_by: str
+def _load_derived_metric_rows(
+    db: FinancialDatabase, *, metric_name: str, derived_store: DerivedMetricStore
 ) -> pd.DataFrame:
+    """
+    Compute a derived metric per period from its raw base metrics.
+
+    N/A fills are skipped so missing values count as N/A, as they do for DB metrics.
+    Periods where the formula resolves to nothing (a base metric has no data) are
+    left out, matching where the metric is usable in rankings and IC.
+    """
+    frames: list[pd.DataFrame] = []
+    for period in db.list_periods():
+        try:
+            wide, _ = fetch_metric_matrix(
+                db.engine,
+                period,
+                [metric_name],
+                derived_store,
+                apply_na_handling=False,
+            )
+        except ValueError:
+            continue
+        if metric_name in wide.attrs.get("missing_metrics", []):
+            continue
+        values = wide[metric_name].reset_index()
+        frames.append(pd.DataFrame({
+            "period": period,
+            "security_id": values["security_id"],
+            "value": values[metric_name],
+        }))
+    if not frames:
+        return pd.DataFrame(columns=_ROW_COLUMNS)
+    return pd.concat(frames, ignore_index=True)
+
+
+def _normalise_rows(rows: pd.DataFrame) -> pd.DataFrame:
+    rows = rows.reindex(columns=_ROW_COLUMNS).copy()
+    rows["period"] = rows["period"].astype(str)
+    rows["value"] = pd.to_numeric(rows["value"], errors="coerce")
+    return rows
+
+
+def _load_metric_rows(
+    db: FinancialDatabase,
+    *,
+    metric: dict[str, Any],
+    derived_store: DerivedMetricStore,
+) -> pd.DataFrame:
+    if is_derived_metric(metric):
+        rows = _load_derived_metric_rows(
+            db, metric_name=metric["metric_name"], derived_store=derived_store
+        )
+    else:
+        rows = _load_db_metric_rows(db, metric_id=metric["metric_id"])
+    return _normalise_rows(rows)
+
+
+def _load_security_groups(db: FinancialDatabase, *, group_by: str) -> pd.DataFrame:
+    """Sector or industry per (period, security): period classification, then security."""
     if group_by not in {"sector", "industry"}:
         raise ValueError("group_by must be 'sector' or 'industry'.")
 
@@ -107,36 +143,54 @@ def _load_metric_values_with_group(
             tbl_class.c.industry_id, tbl_sec.c.industry_id
         )
 
+    universe = select(tbl_fund.c.period, tbl_fund.c.security_id).distinct().subquery()
     q = (
         select(
-            tbl_fund.c.period.label("period"),
+            universe.c.period.label("period"),
+            universe.c.security_id.label("security_id"),
             label_col.label("group"),
-            tbl_fund.c.value.label("value"),
         )
-        .select_from(tbl_fund)
-        .join(tbl_sec, tbl_sec.c.id == tbl_fund.c.security_id)
+        .select_from(universe)
+        .join(tbl_sec, tbl_sec.c.id == universe.c.security_id)
         .outerjoin(
             tbl_class,
             and_(
-                tbl_class.c.security_id == tbl_fund.c.security_id,
-                tbl_class.c.period == tbl_fund.c.period,
+                tbl_class.c.security_id == universe.c.security_id,
+                tbl_class.c.period == universe.c.period,
             ),
         )
         .outerjoin(
             tbl_sector if group_by == "sector" else tbl_industry,
             join_label,
         )
-        .where(tbl_fund.c.metric_id == int(metric_id))
-        .order_by(tbl_fund.c.period)
     )
     with db.engine.connect() as conn:
         df = pd.read_sql_query(q, con=conn)
-    if df.empty:
-        return df
     df["period"] = df["period"].astype(str)
-    df["group"] = df["group"].astype("string").fillna("Unknown").astype(str)
-    df["value"] = pd.to_numeric(df["value"], errors="coerce")
     return df
+
+
+def _attach_groups(rows: pd.DataFrame, groups: pd.DataFrame) -> pd.DataFrame:
+    grouped = rows.merge(groups, on=["period", "security_id"], how="left")
+    grouped["group"] = grouped["group"].astype("string").fillna("Unknown").astype(str)
+    return grouped
+
+
+def _period_counts(rows: pd.DataFrame) -> pd.DataFrame:
+    if rows.empty:
+        return pd.DataFrame(columns=["period", "total", "na_count"])
+    return (
+        rows.assign(is_na=rows["value"].isna())
+        .groupby("period", sort=True)
+        .agg(total=("value", "size"), na_count=("is_na", "sum"))
+        .astype(int)
+        .reset_index()
+    )
+
+
+def _overall_mean(rows: pd.DataFrame) -> float | None:
+    mean = rows["value"].mean()
+    return None if pd.isna(mean) else float(mean)
 
 
 # ---------- Stats ----------
@@ -223,25 +277,35 @@ def _compute_group_period_stats(values: pd.DataFrame) -> pd.DataFrame:
 
 
 def _compute_diagnostics(
-    db: FinancialDatabase, *, metric_id: int, aggregation: str
+    rows: pd.DataFrame, *, groups: pd.DataFrame | None, group_label: str
+) -> dict[str, Any]:
+    """Build every table this page renders from the metric's raw rows."""
+    values = rows.dropna(subset=["value"])
+    return {
+        "stats": _compute_period_stats(values, _period_counts(rows)),
+        "overall_mean": _overall_mean(rows),
+        "group_stats": (
+            None if groups is None
+            else _compute_group_period_stats(_attach_groups(rows, groups))
+        ),
+        "group_label": group_label,
+    }
+
+
+def _run_diagnostics(
+    db: FinancialDatabase,
+    *,
+    metric: dict[str, Any],
+    derived_store: DerivedMetricStore,
+    aggregation: str,
 ) -> dict[str, Any]:
     """Run every query this page needs, so rendering never touches the database again."""
-    counts = _load_period_counts(db, metric_id=metric_id)
-    values = _load_metric_values(db, metric_id=metric_id)
-    payload: dict[str, Any] = {
-        "stats": _compute_period_stats(values, counts),
-        "overall_mean": _load_metric_overall_mean(db, metric_id=metric_id),
-        "group_stats": None,
-        "group_label": "",
-    }
+    rows = _load_metric_rows(db, metric=metric, derived_store=derived_store)
     group_by = _GROUP_BY_AGGREGATION.get(aggregation)
-    if group_by:
-        grouped = _load_metric_values_with_group(db, metric_id=metric_id, group_by=group_by)
-        payload["group_stats"] = (
-            pd.DataFrame() if grouped.empty else _compute_group_period_stats(grouped)
-        )
-        payload["group_label"] = group_by.capitalize()
-    return payload
+    groups = _load_security_groups(db, group_by=group_by) if group_by else None
+    return _compute_diagnostics(
+        rows, groups=groups, group_label=group_by.capitalize() if group_by else ""
+    )
 
 
 # ---------- Color rules ----------
@@ -415,8 +479,10 @@ render_page_header(
 )
 
 db = FinancialDatabase()
-name_to_id = _metric_id_by_name(db)
-metric_names = sorted(name_to_id.keys())
+derived_store = DerivedMetricStore()
+metric_index = _metric_index(db, derived_store)
+metric_names = sorted(metric_index.keys())
+derived_count = sum(1 for m in metric_index.values() if is_derived_metric(m))
 
 with st.container(border=True):
     st.markdown("**Inputs**")
@@ -427,8 +493,15 @@ with st.container(border=True):
             options=metric_names,
             index=0 if metric_names else None,
             disabled=not bool(metric_names),
-            help="Select the metric to analyze across uploaded periods.",
+            format_func=lambda name: metric_label(metric_index, name),
+            help=(
+                "Select the metric to analyze across uploaded periods. Derived metrics "
+                "are listed with their formula and computed per period from their raw "
+                "base metrics, before any N/A treatment."
+            ),
         )
+        if derived_count:
+            st.caption(f"{derived_count} derived metric(s) available.")
     with c2:
         aggregation = st.selectbox(
             "Breakdown",
@@ -449,8 +522,11 @@ if run:
     with st.spinner("Computing diagnostics..."):
         store_result(
             _DIAGNOSTICS_RESULT_KEY,
-            _compute_diagnostics(
-                db, metric_id=name_to_id[selected_metric], aggregation=aggregation
+            _run_diagnostics(
+                db,
+                metric=metric_index[selected_metric],
+                derived_store=derived_store,
+                aggregation=aggregation,
             ),
             inputs=current_inputs,
         )

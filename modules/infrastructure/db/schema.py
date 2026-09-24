@@ -105,6 +105,21 @@ def create_tables(engine: Engine) -> None:
         UniqueConstraint("ticker", "price_date", name="uq_price_ticker_date"),
     )
 
+    Table(
+        "total_returns",
+        metadata,
+        Column("id", Integer, primary_key=True, autoincrement=True),
+        Column("ticker", String, nullable=False),
+        Column("start_date", String, nullable=False),
+        Column("end_date", String, nullable=False),
+        Column("horizon_months", Integer, nullable=False),
+        Column("total_return", Float, nullable=False),
+        Column("source", String, nullable=False),
+        UniqueConstraint(
+            "ticker", "start_date", "end_date", name="uq_total_return_ticker_window"
+        ),
+    )
+
     metadata.create_all(engine)
 
     # Migrate: add higher_is_better if table existed without it
