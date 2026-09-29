@@ -602,6 +602,455 @@
       ],
       "higher_is_better": false,
       "na_handling": "replace_with_zero"
+    },
+    "ROE Change": {
+      "metric_names": [
+        "Current ROE",
+        "Past ROE",
+        "Past ROE"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "ROE Trend": {
+      "metric_names": [
+        "Estimated ROE",
+        "Current ROE",
+        "Current ROE"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "ROA Change": {
+      "metric_names": [
+        "Current ROA",
+        "Past ROA",
+        "Past ROA"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "ROA Trend": {
+      "metric_names": [
+        "Estimated ROA",
+        "Current ROA",
+        "Current ROA"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "ROIC Change": {
+      "metric_names": [
+        "Current ROIC",
+        "Past ROIC",
+        "Past ROIC"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "ROIC Trend": {
+      "metric_names": [
+        "Estimated ROIC",
+        "Current ROIC",
+        "Current ROIC"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "EBIT Margin Change": {
+      "metric_names": [
+        "Current EBIT Margin",
+        "Past EBIT Margin",
+        "Past EBIT Margin"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "EBIT Margin Trend": {
+      "metric_names": [
+        "Estimated EBIT Margin",
+        "Current EBIT Margin",
+        "Current EBIT Margin"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Total Assets Growth Change": {
+      "metric_names": [
+        "Current Total Assets Growth",
+        "Past Total Assets Growth",
+        "Past Total Assets Growth"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Total Assets Growth Trend": {
+      "metric_names": [
+        "Estimated Total Assets Growth",
+        "Current Total Assets Growth",
+        "Current Total Assets Growth"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Current Accruals/Assets": {
+      "metric_names": [
+        "Current Net Income",
+        "Current Operating Cash Flow",
+        "Current Total Assets"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Current LT Debt/Assets": {
+      "metric_names": [
+        "Current Long Term Debt",
+        "Current Total Assets"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Past LT Debt/Assets": {
+      "metric_names": [
+        "Past Long Term Debt",
+        "Past Total Assets"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "LT Debt/Assets Change": {
+      "metric_names": [
+        "Current LT Debt/Assets",
+        "Past LT Debt/Assets",
+        "Past LT Debt/Assets"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Current Net Debt/Assets": {
+      "metric_names": [
+        "Current Net Debt",
+        "Current Total Assets"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Past Net Debt/Assets": {
+      "metric_names": [
+        "Past Net Debt",
+        "Past Total Assets"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Estimated Net Debt/Assets": {
+      "metric_names": [
+        "Estimated Net Debt",
+        "Estimated Total Assets"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Net Debt/Assets Change": {
+      "metric_names": [
+        "Current Net Debt/Assets",
+        "Past Net Debt/Assets",
+        "Past Net Debt/Assets"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Net Debt/Assets Trend": {
+      "metric_names": [
+        "Estimated Net Debt/Assets",
+        "Current Net Debt/Assets",
+        "Current Net Debt/Assets"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Current Net Debt/OCF": {
+      "metric_names": [
+        "Current Net Debt",
+        "Current Operating Cash Flow"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Past Net Debt/OCF": {
+      "metric_names": [
+        "Past Net Debt",
+        "Past Operating Cash Flow"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Estimated Net Debt/OCF": {
+      "metric_names": [
+        "Estimated Net Debt",
+        "Estimated Operating Cash Flow"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Net Debt/OCF Change": {
+      "metric_names": [
+        "Current Net Debt/OCF",
+        "Past Net Debt/OCF",
+        "Past Net Debt/OCF"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Net Debt/OCF Trend": {
+      "metric_names": [
+        "Estimated Net Debt/OCF",
+        "Current Net Debt/OCF",
+        "Current Net Debt/OCF"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Current OCF/LT Debt": {
+      "metric_names": [
+        "Current Operating Cash Flow",
+        "Current Long Term Debt"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Past OCF/LT Debt": {
+      "metric_names": [
+        "Past Operating Cash Flow",
+        "Past Long Term Debt"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "OCF/LT Debt Change": {
+      "metric_names": [
+        "Current OCF/LT Debt",
+        "Past OCF/LT Debt",
+        "Past OCF/LT Debt"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Current CFO/Assets": {
+      "metric_names": [
+        "Current Operating Cash Flow",
+        "Current Total Assets"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Past CFO/Assets": {
+      "metric_names": [
+        "Past Operating Cash Flow",
+        "Past Total Assets"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Estimated CFO/Assets": {
+      "metric_names": [
+        "Estimated Operating Cash Flow",
+        "Estimated Total Assets"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "CFO/Assets Change": {
+      "metric_names": [
+        "Current CFO/Assets",
+        "Past CFO/Assets",
+        "Past CFO/Assets"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "CFO/Assets Trend": {
+      "metric_names": [
+        "Estimated CFO/Assets",
+        "Current CFO/Assets",
+        "Current CFO/Assets"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Current OCF/Net Income": {
+      "metric_names": [
+        "Current Operating Cash Flow",
+        "Current Net Income"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Past OCF/Net Income": {
+      "metric_names": [
+        "Past Operating Cash Flow",
+        "Past Net Income"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Estimated OCF/Net Income": {
+      "metric_names": [
+        "Estimated Operating Cash Flow",
+        "Estimated Net Income"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "OCF/Net Income Change": {
+      "metric_names": [
+        "Current OCF/Net Income",
+        "Past OCF/Net Income",
+        "Past OCF/Net Income"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "OCF/Net Income Trend": {
+      "metric_names": [
+        "Estimated OCF/Net Income",
+        "Current OCF/Net Income",
+        "Current OCF/Net Income"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
     }
   }
 }

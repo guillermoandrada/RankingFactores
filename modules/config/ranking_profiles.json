@@ -454,6 +454,268 @@
       },
       "winsor_mode": "quantile",
       "method": "softplus"
+    },
+    "Quality_24-09": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current Net Debt / EBITDA": 0.8,
+            "ROIC Change": 0.1,
+            "Total Assets Growth Change": 0.1
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_24-09_Energy": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current Total Assets Growth": 0.13,
+            "Total Assets Growth Change": 0.29,
+            "Total Assets Growth Trend": 0.58
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_24-09_Pharmaceuticals, Biotechnology & Life Sciences": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current ROE": 0.06,
+            "Current ROA": 0.04,
+            "Current ROIC": 0.05,
+            "Current EBIT Margin": 0.02,
+            "ROE Trend": 0.13,
+            "ROA Trend": 0.12,
+            "EBIT Margin Change": 0.11,
+            "EBIT Margin Trend": 0.12,
+            "Gross Margin Change": 0.13,
+            "Gross Margin Trend": 0.14,
+            "Current Total Assets Growth": 0.01,
+            "Current FCFF/Net Income": 0.07
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_24-09_Semiconductors & Semiconductor Equipment": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current ROE": 0.01,
+            "Current ROA": 0.03,
+            "Current ROIC": 0.04,
+            "ROE Trend": 0.1,
+            "ROA Trend": 0.2,
+            "ROIC Change": 0.06,
+            "EBIT Margin Trend": 0.1,
+            "Current Gross Margin": 0.25,
+            "Gross Margin Change": 0.06,
+            "Net Debt/EBITDA Change": 0.03,
+            "EPS Variability": 0.09,
+            "Current FCFF/Net Income": 0.03
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_24-09_Food, Beverage & Tobacco": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "ROE Trend": 0.05,
+            "ROA Trend": 0.07,
+            "Current ROIC": 0.06,
+            "Current EBIT Margin": 0.11,
+            "Current Gross Margin": 0.12,
+            "EBIT Margin Trend": 0.26,
+            "Current Net Debt / EBITDA": 0.13,
+            "Total Assets Growth Trend": 0.11,
+            "Current FCFF/Net Income": 0.09
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_24-09_Transportation": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "ROE Change": 0.17,
+            "ROA Trend": 0.15,
+            "Current ROIC": 0.08,
+            "ROIC Change": 0.38,
+            "Current EBIT Margin": 0.08,
+            "EBIT Margin Trend": 0.14
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_24-09_Technology Hardware & Equipment": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current ROE": 0.04,
+            "Current ROA": 0.06,
+            "Current EBIT Margin": 0.16,
+            "ROA Change": 0.09,
+            "Current Gross Margin": 0.22,
+            "Net Debt/EBITDA Change": 0.21,
+            "Net Debt/EBITDA Trend": 0.16,
+            "EPS Variability": 0.06
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_24-09_Insurance": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current FCFF/Net Income": 1.0
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_24-09_Banks": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "ROIC Change": 0.28,
+            "Current Total Assets Growth": 0.12,
+            "Total Assets Growth Change": 0.48,
+            "Total Assets Growth Trend": 0.12
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_28-09": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current ROIC": 0.02,
+            "ROIC Change": 0.07,
+            "CFO/Assets Change": 0.11,
+            "OCF/LT Debt Change": 0.05,
+            "Current LT Debt/Assets": 0.06,
+            "Current Net Debt/Assets": 0.05,
+            "Current Net Debt/OCF": 0.06,
+            "Net Debt/OCF Change": 0.01,
+            "Current OCF/LT Debt": 0.07,
+            "Current Accruals/Assets": 0.07,
+            "Current OCF/Net Income": 0.05,
+            "OCF/Net Income Change": 0.13,
+            "Current Total Assets Growth": 0.19,
+            "Total Assets Growth Change": 0.06
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_29-09": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "CFO/Assets Change": 0.11,
+            "ROIC Change": 0.07,
+            "OCF/LT Debt Change": 0.05,
+            "Current ROIC": 0.02,
+            "Current OCF/LT Debt": 0.07,
+            "Current LT Debt/Assets": 0.06,
+            "Current Net Debt/OCF": 0.06,
+            "Current Net Debt/Assets": 0.05,
+            "Net Debt/OCF Change": 0.01,
+            "OCF/Net Income Change": 0.13,
+            "Current Accruals/Assets": 0.07,
+            "Current OCF/Net Income": 0.05,
+            "Current Total Assets Growth": 0.19,
+            "Total Assets Growth Change": 0.06
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
     }
   }
 }
