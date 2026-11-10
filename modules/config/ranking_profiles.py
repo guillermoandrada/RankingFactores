@@ -17,8 +17,11 @@ def _profile_to_transform_chain(profile: dict[str, Any]) -> list[dict[str, Any]]
     Build transform chain from profile's normalization and winsorization.
     normalization: "zscore" | "normalized_zscore" | "percentile"
     winsorization: false | true | {lower, upper}
+    power_transform: optional "yeo_johnson", applied first
     """
     chain: list[dict[str, Any]] = []
+    if profile.get("power_transform") == "yeo_johnson":
+        chain.append({"name": "yeo_johnson", "params": {}})
     winsor = profile.get("winsorization")
     winsor_mode = profile.get("winsor_mode", "quantile")
     if winsor:
@@ -49,13 +52,17 @@ def normalize_profile(profile: dict[str, Any]) -> dict[str, Any]:
     """Return a normalized copy of a profile dict with defaults applied.
 
     This is the canonical place to ensure that profiles have consistent
-    fields (normalization, winsorization, winsor_mode) and no deprecated
+    fields (power_transform, normalization, winsorization, winsor_mode) and no deprecated
     keys before execution.
     """
     p = deepcopy(profile)
 
     # Remove historical overrides field if still present
     p.pop("overrides", None)
+
+    # Power transform: "none" or "yeo_johnson" (applied before winsorization)
+    if "power_transform" not in p:
+        p["power_transform"] = "none"
 
     # Normalization default
     if "normalization" not in p:

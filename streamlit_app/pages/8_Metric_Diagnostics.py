@@ -7,10 +7,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import streamlit as st
-from sqlalchemy import and_, func, select
+from sqlalchemy import select
 
 from modules.config.derived_metrics import DerivedMetricStore
-from modules.domain.analytics.metric_loader import fetch_metric_matrix
+from modules.domain.analytics.metric_loader import (
+    fetch_metric_matrix,
+    resolve_metric_dependencies,
+)
+from modules.domain.analytics.security_groups import select_security_groups
 from modules.infrastructure.db import FinancialDatabase
 from streamlit_app.ui import (
     is_derived_metric,
@@ -61,35 +65,69 @@ def _load_db_metric_rows(db: FinancialDatabase, *, metric_id: int) -> pd.DataFra
         return pd.read_sql_query(q, con=conn)
 
 
+def _select_metric_universe(db: FinancialDatabase, *, metric_ids: list[int] | None = None):
+    """Distinct (period, security_id) with a fundamental_values row, NULL values included."""
+    tbl_fund = db._metadata.tables["fundamental_values"]
+    q = select(tbl_fund.c.period, tbl_fund.c.security_id).distinct()
+    if metric_ids is not None:
+        q = q.where(tbl_fund.c.metric_id.in_(metric_ids))
+    return q
+
+
+def _load_metric_universe(db: FinancialDatabase, *, metric_ids: list[int]) -> pd.DataFrame:
+    with db.engine.connect() as conn:
+        universe = pd.read_sql_query(
+            _select_metric_universe(db, metric_ids=metric_ids), con=conn
+        )
+    universe["period"] = universe["period"].astype(str)
+    return universe
+
+
+def _base_metric_ids(
+    db: FinancialDatabase, *, metric_name: str, derived_store: DerivedMetricStore
+) -> list[int]:
+    """Ids of the DB metrics a derived metric is built from; formula errors propagate."""
+    db_ids = {
+        metric["metric_name"]: metric["metric_id"]
+        for metric in db.list_metrics()
+        if isinstance(metric.get("metric_id"), int)
+    }
+    dependencies = resolve_metric_dependencies(
+        metric_name, derived_store.list_formulas(), set(db_ids)
+    )
+    return [db_ids[name] for name in dependencies if name in db_ids]
+
+
 def _load_derived_metric_rows(
     db: FinancialDatabase, *, metric_name: str, derived_store: DerivedMetricStore
 ) -> pd.DataFrame:
     """
     Compute a derived metric per period from its raw base metrics.
 
-    N/A fills are skipped so missing values count as N/A, as they do for DB metrics.
-    Periods where the formula resolves to nothing (a base metric has no data) are
-    left out, matching where the metric is usable in rankings and IC.
+    The row universe is every security with a row for any base metric, NULL values
+    included, so missing data counts as N/A exactly as it does for DB metrics. N/A
+    fills are skipped. Periods where the formula resolves to nothing (a base metric
+    has no data) are left out, matching where the metric is usable in rankings and IC.
     """
+    base_ids = _base_metric_ids(db, metric_name=metric_name, derived_store=derived_store)
+    universe = _load_metric_universe(db, metric_ids=base_ids)
     frames: list[pd.DataFrame] = []
-    for period in db.list_periods():
-        try:
-            wide, _ = fetch_metric_matrix(
-                db.engine,
-                period,
-                [metric_name],
-                derived_store,
-                apply_na_handling=False,
-            )
-        except ValueError:
-            continue
+    for period, period_universe in universe.groupby("period", sort=True):
+        wide, _ = fetch_metric_matrix(
+            db.engine,
+            period,
+            [metric_name],
+            derived_store,
+            apply_na_handling=False,
+        )
         if metric_name in wide.attrs.get("missing_metrics", []):
             continue
-        values = wide[metric_name].reset_index()
+        security_ids = period_universe["security_id"].to_numpy()
+        values = wide[metric_name].droplevel(["ticker", "long_name"])
         frames.append(pd.DataFrame({
             "period": period,
-            "security_id": values["security_id"],
-            "value": values[metric_name],
+            "security_id": security_ids,
+            "value": values.reindex(security_ids).to_numpy(),
         }))
     if not frames:
         return pd.DataFrame(columns=_ROW_COLUMNS)
@@ -120,54 +158,12 @@ def _load_metric_rows(
 
 def _load_security_groups(db: FinancialDatabase, *, group_by: str) -> pd.DataFrame:
     """Sector or industry per (period, security): period classification, then security."""
-    if group_by not in {"sector", "industry"}:
-        raise ValueError("group_by must be 'sector' or 'industry'.")
-
-    meta = db._metadata
-    tbl_fund = meta.tables["fundamental_values"]
-    tbl_sec = meta.tables["securities"]
-    tbl_class = meta.tables.get("security_classification")
-    tbl_sector = meta.tables.get("sectors")
-    tbl_industry = meta.tables.get("industries")
-    if tbl_class is None or tbl_sector is None or tbl_industry is None:
-        raise RuntimeError("Missing classification tables in database metadata.")
-
-    if group_by == "sector":
-        label_col = tbl_sector.c.sector_name
-        join_label = tbl_sector.c.sector_id == func.coalesce(
-            tbl_class.c.sector_id, tbl_sec.c.sector_id
-        )
-    else:
-        label_col = tbl_industry.c.industry_name
-        join_label = tbl_industry.c.industry_id == func.coalesce(
-            tbl_class.c.industry_id, tbl_sec.c.industry_id
-        )
-
-    universe = select(tbl_fund.c.period, tbl_fund.c.security_id).distinct().subquery()
-    q = (
-        select(
-            universe.c.period.label("period"),
-            universe.c.security_id.label("security_id"),
-            label_col.label("group"),
-        )
-        .select_from(universe)
-        .join(tbl_sec, tbl_sec.c.id == universe.c.security_id)
-        .outerjoin(
-            tbl_class,
-            and_(
-                tbl_class.c.security_id == universe.c.security_id,
-                tbl_class.c.period == universe.c.period,
-            ),
-        )
-        .outerjoin(
-            tbl_sector if group_by == "sector" else tbl_industry,
-            join_label,
-        )
-    )
+    universe = _select_metric_universe(db).subquery()
+    q = select_security_groups(db._metadata, universe, group_by=group_by)
     with db.engine.connect() as conn:
         df = pd.read_sql_query(q, con=conn)
     df["period"] = df["period"].astype(str)
-    return df
+    return df[["period", "security_id", "group"]]
 
 
 def _attach_groups(rows: pd.DataFrame, groups: pd.DataFrame) -> pd.DataFrame:
@@ -520,16 +516,17 @@ current_inputs = {"Metric": selected_metric, "Breakdown": aggregation}
 
 if run:
     with st.spinner("Computing diagnostics..."):
-        store_result(
-            _DIAGNOSTICS_RESULT_KEY,
-            _run_diagnostics(
+        try:
+            diagnostics = _run_diagnostics(
                 db,
                 metric=metric_index[selected_metric],
                 derived_store=derived_store,
                 aggregation=aggregation,
-            ),
-            inputs=current_inputs,
-        )
+            )
+        except ValueError as exc:
+            st.error(f"Cannot compute diagnostics for '{selected_metric}': {exc}")
+            st.stop()
+        store_result(_DIAGNOSTICS_RESULT_KEY, diagnostics, inputs=current_inputs)
 
 # Rendered from session state, so the breakdown selector below cannot clear the tables.
 stored_result = read_result(_DIAGNOSTICS_RESULT_KEY)

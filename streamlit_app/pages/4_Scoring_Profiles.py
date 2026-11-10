@@ -90,6 +90,8 @@ if f"profile_winsor_mode_{selected_profile}" not in st.session_state:
     st.session_state[f"profile_winsor_mode_{selected_profile}"] = profile_data.get("winsor_mode", "quantile")
 if f"profile_method_{selected_profile}" not in st.session_state:
     st.session_state[f"profile_method_{selected_profile}"] = profile_data.get("method", "linear")
+if f"profile_power_transform_{selected_profile}" not in st.session_state:
+    st.session_state[f"profile_power_transform_{selected_profile}"] = profile_data.get("power_transform", "none")
 normalization = st.session_state[f"profile_norm_{selected_profile}"]
 winsor_dict = st.session_state[f"profile_winsor_{selected_profile}"]
 use_winsor = st.session_state[f"profile_use_winsor_{selected_profile}"]
@@ -258,6 +260,14 @@ with st.expander("Normalization, Winsorization & Aggregation"):
         help="Linear = sum of weighted z-scores. Softplus = geometric-like combination. Per-node override in Node settings.",
     )
     st.session_state[method_key] = method_values[method_labels.index(method_choice)]
+    power_transform_key = f"profile_power_transform_{selected_profile}"
+    use_yeo_johnson = st.checkbox(
+        "Use Yeo-Johnson power transform",
+        value=st.session_state[power_transform_key] == "yeo_johnson",
+        key=f"profile_use_yeo_johnson_{selected_profile}",
+        help="Reduces skew before winsorization; lambda is fitted per metric and period.",
+    )
+    st.session_state[power_transform_key] = "yeo_johnson" if use_yeo_johnson else "none"
     use_winsor = st.checkbox("Use winsorization", value=use_winsor, key="winsor_use")
     st.session_state[f"profile_use_winsor_{selected_profile}"] = use_winsor
     winsor_mode_key = f"profile_winsor_mode_{selected_profile}"
@@ -302,6 +312,7 @@ with st.expander("Preview"):
         st.session_state[f"profile_winsor_mode_{selected_profile}"],
         key_prefix,
         method=st.session_state[f"profile_method_{selected_profile}"],
+        power_transform=st.session_state[f"profile_power_transform_{selected_profile}"],
     )
 
 # Actions
@@ -318,6 +329,7 @@ with c1:
                 w,
                 st.session_state[f"profile_winsor_mode_{selected_profile}"],
                 method=st.session_state[f"profile_method_{selected_profile}"],
+                power_transform=st.session_state[f"profile_power_transform_{selected_profile}"],
             )
             client.upsert_scoring_profile(selected_profile, payload)
             st.success(f"Saved '{selected_profile}'.")

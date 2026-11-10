@@ -6,7 +6,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
 import pandas as pd
+from scipy import stats
 
 
 @dataclass
@@ -59,6 +61,22 @@ class SemiWinsorTransform(BaseTransform):
         lower = mean - k * std
         upper = mean + k * std
         return series.clip(lower=lower, upper=upper)
+
+
+class YeoJohnsonTransform(BaseTransform):
+    """Yeo-Johnson power transform; lambda fitted on the 0.5-99.5% body, NA kept."""
+
+    name = "yeo_johnson"
+
+    def apply(self, series: pd.Series, **params: Any) -> pd.Series:
+        values = series.dropna().astype(float)
+        if len(values) < 5 or values.std() == 0:
+            return series.copy()
+        body = values.clip(*values.quantile([0.005, 0.995]))
+        lmbda = float(np.clip(stats.yeojohnson_normmax(body.to_numpy()), -3.0, 3.0))
+        out = series.astype(float).copy()
+        out[values.index] = stats.yeojohnson(values.to_numpy(), lmbda=lmbda)
+        return out
 
 
 class ZScoreTransform(BaseTransform):
@@ -149,6 +167,7 @@ def build_default_transform_registry() -> TransformRegistry:
     registry.register(IdentityTransform())
     registry.register(WinsorTransform())
     registry.register(SemiWinsorTransform())
+    registry.register(YeoJohnsonTransform())
     registry.register(ZScoreTransform())
     registry.register(NormalizedZScoreTransform())
     registry.register(PercentileTransform())

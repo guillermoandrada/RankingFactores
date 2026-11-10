@@ -167,10 +167,15 @@
       "nodes": {
         "Scoring": {
           "inputs": {
-            "Current P/E Ratio": 0.05,
-            "Current P/S Ratio": 0.44,
-            "Current P/B Ratio": 0.42,
-            "P/B Change": 0.09
+            "P/B Change": 0.23,
+            "P/TBV Change": 0.17,
+            "Current Price to Tangible Book": 0.15,
+            "Current P/B Ratio": 0.1,
+            "Current P/S Ratio": 0.09,
+            "Estimated P/B Ratio": 0.09,
+            "Estimated P/S Ratio": 0.08,
+            "Estimated P/E Ratio": 0.05,
+            "Current Dividend Yield": 0.04
           },
           "method": "linear"
         }
@@ -187,12 +192,15 @@
       "nodes": {
         "Scoring": {
           "inputs": {
-            "Current P/E Ratio": 0.12,
-            "Current P/S Ratio": 0.09,
-            "Current P/B Ratio": 0.25,
-            "P/B Change": 0.07,
-            "P/B Trend": 0.2,
-            "Current FCF Yield": 0.27
+            "Current FCF Yield": 0.35,
+            "Current P/B Ratio": 0.11,
+            "P/B Trend": 0.11,
+            "Estimated P/B Ratio": 0.1,
+            "Current P/E Ratio": 0.09,
+            "Current P/S Ratio": 0.08,
+            "Estimated P/E Ratio": 0.06,
+            "Current Dividend Yield": 0.05,
+            "Estimated P/S Ratio": 0.05
           },
           "method": "linear"
         }
@@ -209,11 +217,15 @@
       "nodes": {
         "Scoring": {
           "inputs": {
-            "Current P/E Ratio": 0.28,
-            "Current P/S Ratio": 0.22,
-            "Current P/B Ratio": 0.23,
-            "Current EV / EBITDA": 0.23,
-            "Current FCF Yield": 0.04
+            "Current Dividend Yield": 0.27,
+            "Current FCF Yield": 0.16,
+            "Current EV / EBITDA": 0.1,
+            "Current P/E Ratio": 0.09,
+            "Estimated P/E Ratio": 0.09,
+            "Current P/S Ratio": 0.09,
+            "Estimated P/S Ratio": 0.07,
+            "Estimated P/B Ratio": 0.07,
+            "Current P/B Ratio": 0.06
           },
           "method": "linear"
         }
@@ -230,11 +242,16 @@
       "nodes": {
         "Scoring": {
           "inputs": {
-            "Current P/E Ratio": 0.42,
-            "Current P/S Ratio": 0.09,
-            "Current EV / EBITDA": 0.35,
-            "EV/EBITDA Change": 0.06,
-            "Current FCF Yield": 0.08
+            "Current EV / EBITDA": 0.24,
+            "Estimated P/E Ratio": 0.13,
+            "Current Dividend Yield": 0.13,
+            "Estimated P/S Ratio": 0.1,
+            "Current FCF Yield": 0.09,
+            "Current P/E Ratio": 0.09,
+            "Current P/S Ratio": 0.07,
+            "Estimated P/B Ratio": 0.06,
+            "P/B Trend": 0.05,
+            "EV/EBITDA Change": 0.04
           },
           "method": "linear"
         }
@@ -251,9 +268,13 @@
       "nodes": {
         "Scoring": {
           "inputs": {
-            "Current P/S Ratio": 0.09,
-            "P/S Change": 0.49,
-            "Current FCF Yield": 0.42
+            "Current P/S Ratio": 0.28,
+            "Estimated P/E Ratio": 0.22,
+            "P/S Change": 0.17,
+            "Estimated FCF Yield": 0.16,
+            "Estimated P/S Ratio": 0.11,
+            "Current FCF Yield": 0.05,
+            "Current EV / EBITDA": 0.01
           },
           "method": "linear"
         }
@@ -270,15 +291,18 @@
       "nodes": {
         "Scoring": {
           "inputs": {
-            "Current P/E Ratio": 0.11,
-            "Current P/S Ratio": 0.04,
-            "Current P/B Ratio": 0.07,
-            "Current EV / EBITDA": 0.13,
-            "P/E Change": 0.08,
-            "P/S Change": 0.13,
-            "P/B Change": 0.08,
-            "P/B Trend": 0.08,
-            "Current FCF Yield": 0.28
+            "P/E Change": 0.21,
+            "Current FCF Yield": 0.16,
+            "P/B Trend": 0.15,
+            "P/S Change": 0.12,
+            "FCF Yield Change": 0.12,
+            "P/B Change": 0.07,
+            "Estimated FCF Yield": 0.04,
+            "Current EV / EBITDA": 0.03,
+            "Current EV / EBITDAR": 0.03,
+            "Current P/E Ratio": 0.03,
+            "Estimated P/E Ratio": 0.03,
+            "Current P/B Ratio": 0.01
           },
           "method": "linear"
         }
@@ -295,11 +319,14 @@
       "nodes": {
         "Scoring": {
           "inputs": {
-            "P/E Trend": 0.12,
-            "Current P/S Ratio": 0.49,
-            "Current P/B Ratio": 0.02,
-            "Current EV / EBITDA": 0.05,
-            "FCF Yield Trend": 0.32
+            "Estimated FCF Yield": 0.24,
+            "FCF Yield Trend": 0.15,
+            "Current EV / EBITDA": 0.15,
+            "Estimated P/S Ratio": 0.12,
+            "Estimated P/B Ratio": 0.11,
+            "P/E Trend": 0.09,
+            "Current P/B Ratio": 0.09,
+            "Current P/S Ratio": 0.05
           },
           "method": "linear"
         }
@@ -316,11 +343,11 @@
       "nodes": {
         "Scoring": {
           "inputs": {
-            "Current P/E Ratio": 0.14,
-            "Current EV / EBITDA": 0.1,
-            "P/E Trend": 0.09,
-            "EV/EBITDA Change": 0.41,
-            "Current FCF Yield": 0.26
+            "EV/EBITDA Change": 0.42,
+            "EV/EBITDAR Change": 0.21,
+            "Estimated P/E Ratio": 0.15,
+            "Current FCF Yield": 0.15,
+            "Current P/E Ratio": 0.07
           },
           "method": "linear"
         }
@@ -337,12 +364,13 @@
       "nodes": {
         "Scoring": {
           "inputs": {
-            "P/E Change": 0.07,
-            "P/S Change": 0.14,
-            "P/S Trend": 0.21,
-            "P/B Change": 0.24,
-            "P/B Trend": 0.22,
-            "FCF Yield Change": 0.12
+            "P/B Change": 0.21,
+            "FCF Yield Change": 0.19,
+            "EV/EBITDA Change": 0.18,
+            "P/E Change": 0.14,
+            "FCF Yield Trend": 0.1,
+            "P/S Trend": 0.09,
+            "P/S Change": 0.09
           },
           "method": "linear"
         }
@@ -359,10 +387,13 @@
       "nodes": {
         "Scoring": {
           "inputs": {
+            "P/B Trend": 0.27,
+            "P/S Trend": 0.21,
+            "FCF Yield Trend": 0.19,
+            "P/S Change": 0.13,
+            "P/E Change": 0.11,
             "P/E Trend": 0.08,
-            "P/S Trend": 0.36,
-            "P/S Change": 0.33,
-            "FCF Yield Trend": 0.23
+            "P/B Change": 0.01
           },
           "method": "linear"
         }
@@ -379,13 +410,11 @@
       "nodes": {
         "Scoring": {
           "inputs": {
-            "P/E Trend": 0.12,
-            "Current P/S Ratio": 0.01,
-            "P/S Change": 0.27,
-            "P/B Change": 0.19,
-            "Current FCF Yield": 0.08,
-            "FCF Yield Change": 0.1,
-            "FCF Yield Trend": 0.23
+            "P/E Trend": 0.42,
+            "Current P/B Ratio": 0.18,
+            "FCF Yield Trend": 0.18,
+            "Estimated P/B Ratio": 0.14,
+            "P/S Change": 0.08
           },
           "method": "linear"
         }
@@ -402,9 +431,11 @@
       "nodes": {
         "Scoring": {
           "inputs": {
-            "P/E Trend": 0.24,
-            "P/S Trend": 0.46,
-            "P/B Trend": 0.3
+            "P/S Trend": 0.45,
+            "P/E Trend": 0.26,
+            "P/B Trend": 0.15,
+            "Current Dividend Yield": 0.1,
+            "Estimated P/E Ratio": 0.04
           },
           "method": "linear"
         }
@@ -421,9 +452,14 @@
       "nodes": {
         "Scoring": {
           "inputs": {
-            "Current P/S Ratio": 0.3,
-            "Current FCF Yield": 0.56,
-            "FCF Yield Trend": 0.14
+            "FCF Yield Change": 0.52,
+            "Estimated P/S Ratio": 0.09,
+            "Estimated P/E Ratio": 0.08,
+            "Current FCF Yield": 0.07,
+            "Current P/S Ratio": 0.06,
+            "Estimated FCF Yield": 0.06,
+            "Current P/E Ratio": 0.06,
+            "P/B Trend": 0.06
           },
           "method": "linear"
         }
@@ -440,9 +476,13 @@
       "nodes": {
         "Scoring": {
           "inputs": {
-            "P/S Change": 0.05,
-            "P/S Trend": 0.38,
-            "Current P/B Ratio": 0.57
+            "P/S Trend": 0.28,
+            "Estimated P/B Ratio": 0.27,
+            "Current FCF Yield": 0.21,
+            "Current P/B Ratio": 0.15,
+            "FCF Yield Trend": 0.04,
+            "Estimated FCF Yield": 0.03,
+            "Estimated P/E Ratio": 0.02
           },
           "method": "linear"
         }
@@ -705,6 +745,1228 @@
             "Current OCF/Net Income": 0.05,
             "Current Total Assets Growth": 0.19,
             "Total Assets Growth Change": 0.06
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_24-09_Technology Hardware & Equipment": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "FCF Yield Trend": 0.58,
+            "EV/EBITDAR Change": 0.16,
+            "P/E Trend": 0.12,
+            "EV/EBITDA Change": 0.08,
+            "Current EV / EBITDA": 0.06
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_07-10": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.13,
+            "Estimated P/E Ratio": 0.13,
+            "Current Dividend Yield": 0.1,
+            "Current P/B Ratio": 0.08,
+            "Current EV / EBITDA": 0.08,
+            "Current FCF Yield": 0.08,
+            "Estimated FCF Yield": 0.08,
+            "Estimated P/B Ratio": 0.07,
+            "Current P/S Ratio": 0.05,
+            "Estimated P/S Ratio": 0.05,
+            "P/B Trend": 0.05,
+            "P/S Change": 0.05,
+            "EV/EBITDA Change": 0.05
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_07-10_Banks": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.18,
+            "Estimated P/E Ratio": 0.18,
+            "Current Dividend Yield": 0.14,
+            "P/B Trend": 0.08,
+            "Current P/B Ratio": 0.07,
+            "Estimated P/B Ratio": 0.07,
+            "Current Price to Tangible Book": 0.07,
+            "Current P/S Ratio": 0.07,
+            "Estimated P/S Ratio": 0.07,
+            "P/S Change": 0.07
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_07-10_Consumer Services": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Estimated P/E Ratio": 0.25,
+            "P/S Change": 0.16,
+            "Current Dividend Yield": 0.13,
+            "Current EV / EBITDA": 0.11,
+            "Current FCF Yield": 0.11,
+            "Estimated FCF Yield": 0.11,
+            "Current P/S Ratio": 0.07,
+            "Estimated P/S Ratio": 0.06
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_07-10_Equity Real Estate Investment Trusts (REITs)": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.13,
+            "Estimated P/E Ratio": 0.13,
+            "Current EV / EBITDA": 0.12,
+            "Current FCF Yield": 0.12,
+            "Current Dividend Yield": 0.1,
+            "Current P/B Ratio": 0.08,
+            "Estimated P/B Ratio": 0.07,
+            "Current P/S Ratio": 0.05,
+            "Estimated P/S Ratio": 0.05,
+            "P/B Trend": 0.05,
+            "P/S Change": 0.05,
+            "EV/EBITDA Change": 0.05
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_07-10_Consumer Discretionary Distribution & Retail": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Estimated P/E Ratio": 0.25,
+            "Current EV / EBITDA": 0.16,
+            "Current FCF Yield": 0.16,
+            "Current Dividend Yield": 0.13,
+            "P/S Change": 0.08,
+            "EV/EBITDA Change": 0.08,
+            "Current P/GP": 0.07,
+            "Estimated P/GP": 0.07
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_07-10_Media & Entertainment": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Estimated P/E Ratio": 0.25,
+            "Current P/S Ratio": 0.16,
+            "Current FCF Yield": 0.14,
+            "Estimated FCF Yield": 0.14,
+            "Current EV / EBITDA": 0.14,
+            "P/S Change": 0.09,
+            "EV/EBITDA Change": 0.08
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_07-10_Semiconductors & Semiconductor Equipment": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Estimated P/E Ratio": 0.25,
+            "Current EV / EBITDA": 0.25,
+            "P/S Change": 0.13,
+            "EV/EBITDA Change": 0.13,
+            "Current P/S Ratio": 0.06,
+            "Estimated P/S Ratio": 0.06,
+            "Current P/GP": 0.06,
+            "Estimated P/GP": 0.06
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_07-10_Technology Hardware & Equipment": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.18,
+            "Estimated P/E Ratio": 0.18,
+            "Current EV / EBITDA": 0.12,
+            "Current FCF Yield": 0.12,
+            "Estimated FCF Yield": 0.12,
+            "Current P/GP": 0.07,
+            "Estimated P/GP": 0.07,
+            "P/S Change": 0.07,
+            "EV/EBITDA Change": 0.07
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "EPS Variability": 0.15,
+            "Current Accruals/Assets": 0.057,
+            "Current OCF/Net Income": 0.057,
+            "Estimated OCF/Net Income": 0.057,
+            "Current ROE": 0.05,
+            "Current ROA": 0.05,
+            "Current ROIC": 0.05,
+            "Estimated ROE": 0.05,
+            "Estimated ROA": 0.05,
+            "5Y Average ROIC": 0.05,
+            "Estimated Gross Margin": 0.033,
+            "Current EBIT Margin": 0.033,
+            "Estimated EBIT Margin": 0.033,
+            "OCF/LT Debt Change": 0.03,
+            "Current Net Debt / EBITDA": 0.028,
+            "Current Net Debt/Assets": 0.028,
+            "Estimated Net Debt/Assets": 0.028,
+            "Current LT Debt/Assets": 0.028,
+            "Current Net Debt/OCF": 0.028,
+            "Current OCF/LT Debt": 0.028,
+            "ROIC Change": 0.026,
+            "ROA Trend": 0.026,
+            "CFO/Assets Change": 0.015,
+            "OCF/Net Income Change": 0.015
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10_Consumer Discretionary Distribution & Retail": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "EPS Variability": 0.15,
+            "Current ROA": 0.06,
+            "Current ROIC": 0.06,
+            "Estimated ROE": 0.06,
+            "Estimated ROA": 0.06,
+            "5Y Average ROIC": 0.06,
+            "Current Accruals/Assets": 0.043,
+            "Current OCF/Net Income": 0.043,
+            "Estimated OCF/Net Income": 0.043,
+            "Current FCFF/Net Income": 0.042,
+            "OCF/LT Debt Change": 0.03,
+            "Current Net Debt / EBITDA": 0.028,
+            "Current Net Debt/Assets": 0.028,
+            "Estimated Net Debt/Assets": 0.028,
+            "Current LT Debt/Assets": 0.028,
+            "Current Net Debt/OCF": 0.028,
+            "Current OCF/LT Debt": 0.028,
+            "ROIC Change": 0.026,
+            "ROA Trend": 0.026,
+            "Current Gross Margin": 0.021,
+            "Estimated Gross Margin": 0.021,
+            "Current EBIT Margin": 0.021,
+            "Estimated EBIT Margin": 0.021,
+            "Gross Margin Change": 0.015,
+            "CFO/Assets Change": 0.015,
+            "OCF/Net Income Change": 0.015
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10_Consumer Durables & Apparel": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "EPS Variability": 0.15,
+            "Current ROE": 0.05,
+            "Current ROA": 0.05,
+            "Current ROIC": 0.05,
+            "Estimated ROE": 0.05,
+            "Estimated ROA": 0.05,
+            "5Y Average ROIC": 0.05,
+            "Current Accruals/Assets": 0.043,
+            "Current OCF/Net Income": 0.043,
+            "Estimated OCF/Net Income": 0.043,
+            "Current FCFF/Net Income": 0.042,
+            "OCF/LT Debt Change": 0.03,
+            "Current Net Debt / EBITDA": 0.028,
+            "Current Net Debt/Assets": 0.028,
+            "Estimated Net Debt/Assets": 0.028,
+            "Current LT Debt/Assets": 0.028,
+            "Current Net Debt/OCF": 0.028,
+            "Current OCF/LT Debt": 0.028,
+            "ROIC Change": 0.026,
+            "ROA Trend": 0.026,
+            "Current Gross Margin": 0.021,
+            "Estimated Gross Margin": 0.021,
+            "Current EBIT Margin": 0.021,
+            "Estimated EBIT Margin": 0.021,
+            "Gross Margin Change": 0.015,
+            "CFO/Assets Change": 0.015,
+            "OCF/Net Income Change": 0.015
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10_Food, Beverage & Tobacco": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "EPS Variability": 0.15,
+            "Current ROE": 0.05,
+            "Current ROA": 0.05,
+            "Current ROIC": 0.05,
+            "Estimated ROE": 0.05,
+            "Estimated ROA": 0.05,
+            "5Y Average ROIC": 0.05,
+            "Current Accruals/Assets": 0.043,
+            "Current OCF/Net Income": 0.043,
+            "Estimated OCF/Net Income": 0.043,
+            "Current FCFF/Net Income": 0.042,
+            "OCF/LT Debt Change": 0.03,
+            "Current Net Debt / EBITDA": 0.028,
+            "Current Net Debt/Assets": 0.028,
+            "Estimated Net Debt/Assets": 0.028,
+            "Current LT Debt/Assets": 0.028,
+            "Current Net Debt/OCF": 0.028,
+            "Current OCF/LT Debt": 0.028,
+            "ROIC Change": 0.026,
+            "ROA Trend": 0.026,
+            "Current Gross Margin": 0.021,
+            "Estimated Gross Margin": 0.021,
+            "Current EBIT Margin": 0.021,
+            "Estimated EBIT Margin": 0.021,
+            "Gross Margin Change": 0.015,
+            "CFO/Assets Change": 0.015,
+            "OCF/Net Income Change": 0.015
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10_Materials": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "5Y Average ROIC": 0.25,
+            "EPS Variability": 0.16,
+            "Current Accruals/Assets": 0.046,
+            "Current OCF/Net Income": 0.046,
+            "Estimated OCF/Net Income": 0.045,
+            "Current FCFF/Net Income": 0.045,
+            "OCF/LT Debt Change": 0.032,
+            "Current Net Debt / EBITDA": 0.03,
+            "Current Net Debt/Assets": 0.03,
+            "Estimated Net Debt/Assets": 0.03,
+            "Current LT Debt/Assets": 0.03,
+            "Current Net Debt/OCF": 0.03,
+            "Current OCF/LT Debt": 0.03,
+            "ROIC Change": 0.028,
+            "ROA Trend": 0.028,
+            "Current Gross Margin": 0.023,
+            "Estimated Gross Margin": 0.023,
+            "Current EBIT Margin": 0.023,
+            "Estimated EBIT Margin": 0.023,
+            "Gross Margin Change": 0.016,
+            "CFO/Assets Change": 0.016,
+            "OCF/Net Income Change": 0.016
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10_Pharmaceuticals, Biotechnology & Life Sciences": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "EPS Variability": 0.15,
+            "Current ROE": 0.05,
+            "Current ROA": 0.05,
+            "Current ROIC": 0.05,
+            "Estimated ROE": 0.05,
+            "Estimated ROA": 0.05,
+            "5Y Average ROIC": 0.05,
+            "Current Accruals/Assets": 0.043,
+            "Current OCF/Net Income": 0.043,
+            "Estimated OCF/Net Income": 0.043,
+            "Current FCFF/Net Income": 0.042,
+            "OCF/LT Debt Change": 0.03,
+            "Current Net Debt / EBITDA": 0.028,
+            "Current Net Debt/Assets": 0.028,
+            "Estimated Net Debt/Assets": 0.028,
+            "Current LT Debt/Assets": 0.028,
+            "Current Net Debt/OCF": 0.028,
+            "Current OCF/LT Debt": 0.028,
+            "ROIC Change": 0.026,
+            "ROA Trend": 0.026,
+            "Current Gross Margin": 0.021,
+            "Estimated Gross Margin": 0.021,
+            "Current EBIT Margin": 0.021,
+            "Estimated EBIT Margin": 0.021,
+            "Gross Margin Change": 0.015,
+            "CFO/Assets Change": 0.015,
+            "OCF/Net Income Change": 0.015
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10_Semiconductors & Semiconductor Equipment": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "EPS Variability": 0.15,
+            "Current ROE": 0.05,
+            "Current ROA": 0.05,
+            "Current ROIC": 0.05,
+            "Estimated ROE": 0.05,
+            "Estimated ROA": 0.05,
+            "5Y Average ROIC": 0.05,
+            "Current Accruals/Assets": 0.043,
+            "Current OCF/Net Income": 0.043,
+            "Estimated OCF/Net Income": 0.043,
+            "Current FCFF/Net Income": 0.042,
+            "OCF/LT Debt Change": 0.03,
+            "Current Net Debt / EBITDA": 0.028,
+            "Current Net Debt/Assets": 0.028,
+            "Estimated Net Debt/Assets": 0.028,
+            "Current LT Debt/Assets": 0.028,
+            "Current Net Debt/OCF": 0.028,
+            "Current OCF/LT Debt": 0.028,
+            "ROIC Change": 0.026,
+            "ROA Trend": 0.026,
+            "Current Gross Margin": 0.021,
+            "Estimated Gross Margin": 0.021,
+            "Current EBIT Margin": 0.021,
+            "Estimated EBIT Margin": 0.021,
+            "Gross Margin Change": 0.015,
+            "CFO/Assets Change": 0.015,
+            "OCF/Net Income Change": 0.015
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10_v2": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "EPS CV Squared": 0.15,
+            "Current ROE": 0.043,
+            "Current ROA": 0.043,
+            "Current ROIC": 0.043,
+            "Estimated ROE": 0.043,
+            "Estimated ROA": 0.043,
+            "5Y Average ROIC": 0.043,
+            "Estimated GP/Assets": 0.043,
+            "Current Accruals/Assets": 0.034,
+            "Current OCF/Net Income": 0.034,
+            "Estimated OCF/Net Income": 0.034,
+            "Current CFO/Assets": 0.034,
+            "Estimated CFO/Assets": 0.034,
+            "Estimated Gross Margin": 0.033,
+            "Current EBIT Margin": 0.033,
+            "Estimated EBIT Margin": 0.033,
+            "OCF/LT Debt Change": 0.03,
+            "ROIC Change": 0.026,
+            "ROA Trend": 0.026,
+            "Current Net Debt / EBITDA": 0.024,
+            "Estimated Net Debt / EBITDA": 0.024,
+            "Current Net Debt/Assets": 0.024,
+            "Estimated Net Debt/Assets": 0.024,
+            "Current LT Debt/Assets": 0.024,
+            "Current Net Debt/OCF": 0.024,
+            "Current OCF/LT Debt": 0.024,
+            "CFO/Assets Change": 0.015,
+            "OCF/Net Income Change": 0.015
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10_v2_Consumer Staples Distribution & Retail": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "EPS CV Squared": 0.15,
+            "Current ROE": 0.037,
+            "Current ROA": 0.037,
+            "Current ROIC": 0.037,
+            "Estimated ROE": 0.037,
+            "Estimated ROA": 0.037,
+            "5Y Average ROIC": 0.037,
+            "Current GP/Assets": 0.037,
+            "Estimated GP/Assets": 0.037,
+            "OCF/LT Debt Change": 0.03,
+            "Current Accruals/Assets": 0.029,
+            "Current OCF/Net Income": 0.029,
+            "Estimated OCF/Net Income": 0.029,
+            "Current CFO/Assets": 0.029,
+            "Estimated CFO/Assets": 0.029,
+            "Current FCFF/Net Income": 0.029,
+            "Current Gross Margin": 0.022,
+            "Estimated Gross Margin": 0.021,
+            "Current EBIT Margin": 0.021,
+            "Estimated EBIT Margin": 0.021,
+            "Current Net Debt / EBITDA": 0.021,
+            "Estimated Net Debt / EBITDA": 0.021,
+            "Current Net Debt/Assets": 0.021,
+            "Estimated Net Debt/Assets": 0.021,
+            "Current LT Debt/Assets": 0.021,
+            "Current Net Debt/OCF": 0.021,
+            "Estimated Net Debt/OCF": 0.021,
+            "Current OCF/LT Debt": 0.021,
+            "Gross Margin Change": 0.015,
+            "CFO/Assets Change": 0.015,
+            "OCF/Net Income Change": 0.015,
+            "ROIC Change": 0.013,
+            "ROA Trend": 0.013,
+            "GP/Assets Change": 0.013,
+            "GP/Assets Trend": 0.013
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10_v2_Financial Services": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "EPS CV Squared": 0.15,
+            "Current Accruals/Assets": 0.057,
+            "Current OCF/Net Income": 0.057,
+            "Current CFO/Assets": 0.057,
+            "Current ROE": 0.05,
+            "Current ROA": 0.05,
+            "Current ROIC": 0.05,
+            "Current EBIT Margin": 0.05,
+            "Estimated EBIT Margin": 0.05,
+            "Estimated ROE": 0.049,
+            "Estimated ROA": 0.049,
+            "5Y Average ROIC": 0.049,
+            "Current Net Debt / EBITDA": 0.034,
+            "Current Net Debt/Assets": 0.034,
+            "Current LT Debt/Assets": 0.034,
+            "Current Net Debt/OCF": 0.034,
+            "Current OCF/LT Debt": 0.034,
+            "OCF/LT Debt Change": 0.03,
+            "ROIC Change": 0.026,
+            "ROA Trend": 0.026,
+            "CFO/Assets Change": 0.015,
+            "OCF/Net Income Change": 0.015
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10_v2_Materials": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "5Y Average ROIC": 0.25,
+            "EPS CV Squared": 0.16,
+            "OCF/LT Debt Change": 0.032,
+            "Current Accruals/Assets": 0.03,
+            "Current OCF/Net Income": 0.03,
+            "Estimated OCF/Net Income": 0.03,
+            "Current CFO/Assets": 0.03,
+            "Estimated CFO/Assets": 0.03,
+            "Current FCFF/Net Income": 0.03,
+            "Current Gross Margin": 0.023,
+            "Estimated Gross Margin": 0.023,
+            "Current EBIT Margin": 0.023,
+            "Estimated EBIT Margin": 0.023,
+            "Current Net Debt / EBITDA": 0.023,
+            "Estimated Net Debt / EBITDA": 0.023,
+            "Current Net Debt/Assets": 0.023,
+            "Estimated Net Debt/Assets": 0.023,
+            "Current LT Debt/Assets": 0.023,
+            "Current Net Debt/OCF": 0.023,
+            "Estimated Net Debt/OCF": 0.022,
+            "Current OCF/LT Debt": 0.022,
+            "Gross Margin Change": 0.016,
+            "CFO/Assets Change": 0.016,
+            "OCF/Net Income Change": 0.016,
+            "ROIC Change": 0.014,
+            "ROA Trend": 0.014,
+            "GP/Assets Change": 0.014,
+            "GP/Assets Trend": 0.014
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10_v2_Pharmaceuticals, Biotechnology & Life Sciences": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "EPS CV Squared": 0.15,
+            "Current ROE": 0.037,
+            "Current ROA": 0.037,
+            "Current ROIC": 0.037,
+            "Estimated ROE": 0.037,
+            "Estimated ROA": 0.037,
+            "5Y Average ROIC": 0.037,
+            "Current GP/Assets": 0.037,
+            "Estimated GP/Assets": 0.037,
+            "OCF/LT Debt Change": 0.03,
+            "Current Accruals/Assets": 0.029,
+            "Current OCF/Net Income": 0.029,
+            "Estimated OCF/Net Income": 0.029,
+            "Current CFO/Assets": 0.029,
+            "Estimated CFO/Assets": 0.029,
+            "Current FCFF/Net Income": 0.029,
+            "Current Net Debt / EBITDA": 0.025,
+            "Estimated Net Debt / EBITDA": 0.024,
+            "Current Net Debt/Assets": 0.024,
+            "Estimated Net Debt/Assets": 0.024,
+            "Current LT Debt/Assets": 0.024,
+            "Current Net Debt/OCF": 0.024,
+            "Current OCF/LT Debt": 0.024,
+            "Current Gross Margin": 0.021,
+            "Estimated Gross Margin": 0.021,
+            "Current EBIT Margin": 0.021,
+            "Estimated EBIT Margin": 0.021,
+            "Gross Margin Change": 0.015,
+            "CFO/Assets Change": 0.015,
+            "OCF/Net Income Change": 0.015,
+            "ROIC Change": 0.013,
+            "ROA Trend": 0.013,
+            "GP/Assets Change": 0.013,
+            "GP/Assets Trend": 0.013
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10_v2_Capital Goods": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "EPS CV Squared": 0.15,
+            "Current ROIC": 0.05,
+            "5Y Average ROIC": 0.05,
+            "Current ROA": 0.05,
+            "Estimated ROA": 0.05,
+            "Current GP/Assets": 0.05,
+            "Estimated GP/Assets": 0.05,
+            "Current Accruals/Assets": 0.043,
+            "Current CFO/Assets": 0.043,
+            "Current NOA/Assets": 0.043,
+            "Current FCFF/Net Income": 0.042,
+            "CFO/Assets Change": 0.03,
+            "OCF/LT Debt Change": 0.03,
+            "Current Net Debt / EBITDA": 0.028,
+            "Estimated Net Debt / EBITDA": 0.028,
+            "Current Net Debt/Assets": 0.028,
+            "Estimated Net Debt/Assets": 0.028,
+            "Current LT Debt/Assets": 0.028,
+            "Current OCF/LT Debt": 0.028,
+            "Current Gross Margin": 0.021,
+            "Estimated Gross Margin": 0.021,
+            "Current EBIT Margin": 0.021,
+            "Estimated EBIT Margin": 0.021,
+            "Gross Margin Change": 0.015,
+            "ROIC Change": 0.013,
+            "ROA Trend": 0.013,
+            "GP/Assets Change": 0.013,
+            "GP/Assets Trend": 0.013
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_07-10_v2_Energy": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "5Y Average ROIC": 0.175,
+            "Current FCFF/Assets": 0.175,
+            "EPS CV Squared": 0.15,
+            "Current Accruals/Assets": 0.085,
+            "Current CFO/Assets": 0.085,
+            "Current EBIT Margin": 0.05,
+            "Estimated EBIT Margin": 0.05,
+            "CFO/Assets Change": 0.03,
+            "OCF/LT Debt Change": 0.03,
+            "Current Net Debt / EBITDA": 0.029,
+            "Estimated Net Debt / EBITDA": 0.029,
+            "Current Net Debt/Assets": 0.028,
+            "Estimated Net Debt/Assets": 0.028,
+            "Current LT Debt/Assets": 0.028,
+            "Current OCF/LT Debt": 0.028
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_FF_13-10": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current Book to Market": 1.0
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "percentile",
+      "winsorization": false,
+      "winsor_mode": "quantile",
+      "method": "linear"
+    },
+    "Value_18-10": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Estimated P/E Ratio": 0.35,
+            "Current EV / EBITDA": 0.25,
+            "Estimated P/B Ratio": 0.15,
+            "Current P/S Ratio": 0.05,
+            "Estimated P/S Ratio": 0.05,
+            "Current Dividend Yield": 0.05,
+            "P/E Change": 0.02,
+            "P/E Trend": 0.02,
+            "P/B Trend": 0.02,
+            "P/S Change": 0.02,
+            "P/S Trend": 0.02
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_18-10": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "EPS CV Squared": 0.1,
+            "Current Accruals/Assets": 0.07,
+            "Current CFO/Assets": 0.07,
+            "Current OCF/Net Income": 0.06,
+            "Current ROE": 0.05,
+            "Current ROA": 0.05,
+            "Current ROIC": 0.05,
+            "Estimated ROE": 0.05,
+            "Estimated ROA": 0.05,
+            "5Y Average ROIC": 0.05,
+            "Current EBIT Margin": 0.05,
+            "Estimated EBIT Margin": 0.05,
+            "Current Net Debt / EBITDA": 0.04,
+            "Estimated Net Debt / EBITDA": 0.04,
+            "Current Net Debt/Assets": 0.03,
+            "Estimated Net Debt/Assets": 0.03,
+            "Current Net Debt/OCF": 0.03,
+            "Current OCF/LT Debt": 0.03,
+            "ROA Trend": 0.02,
+            "CFO/Assets Change": 0.02,
+            "OCF/Net Income Change": 0.02,
+            "ROE Change": 0.01,
+            "ROE Trend": 0.01,
+            "ROIC Change": 0.01,
+            "EBIT Margin Change": 0.01
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_18-10_Financial Services": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.39,
+            "Current EV / EBITDA": 0.28,
+            "Estimated P/B Ratio": 0.17,
+            "Current Dividend Yield": 0.06,
+            "P/E Change": 0.05,
+            "P/B Trend": 0.05
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_18-10_Utilities": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current EV / EBITDA": 0.28,
+            "Current P/E Ratio": 0.2,
+            "Estimated P/E Ratio": 0.2,
+            "Current P/B Ratio": 0.08,
+            "Estimated P/B Ratio": 0.08,
+            "Current Dividend Yield": 0.06,
+            "P/E Trend": 0.05,
+            "P/B Trend": 0.05
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_18-10_Pharmaceuticals, Biotechnology & Life Sciences": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current FCF Yield": 0.3,
+            "Current P/E Ratio": 0.21,
+            "Estimated P/E Ratio": 0.21,
+            "EV/EBITDA Change": 0.1,
+            "Current P/S Ratio": 0.06,
+            "Estimated P/S Ratio": 0.06,
+            "Current Dividend Yield": 0.06
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_18-10_Household & Personal Products": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Estimated P/E Ratio": 0.35,
+            "Current FCF Yield": 0.13,
+            "Estimated FCF Yield": 0.13,
+            "Estimated P/S Ratio": 0.1,
+            "Current P/B Ratio": 0.08,
+            "Estimated P/B Ratio": 0.07,
+            "Current Dividend Yield": 0.05,
+            "P/E Change": 0.03,
+            "P/S Change": 0.03,
+            "P/S Trend": 0.03
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_18-10_Consumer Services": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.42,
+            "Estimated FCF Yield": 0.3,
+            "Current P/S Ratio": 0.12,
+            "P/S Change": 0.1,
+            "Current Dividend Yield": 0.06
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_18-10_Transportation": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Estimated P/E Ratio": 0.35,
+            "Current FCF Yield": 0.25,
+            "Current P/B Ratio": 0.15,
+            "Estimated P/S Ratio": 0.1,
+            "Current Dividend Yield": 0.05,
+            "P/E Change": 0.05,
+            "P/E Trend": 0.05
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Value_18-10_Consumer Durables & Apparel": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current P/E Ratio": 0.18,
+            "Estimated P/E Ratio": 0.18,
+            "Current P/S Ratio": 0.1,
+            "Current EV / EBITDA": 0.08,
+            "Current FCF Yield": 0.08,
+            "Estimated FCF Yield": 0.08,
+            "Current P/B Ratio": 0.08,
+            "Estimated P/B Ratio": 0.08,
+            "Current Dividend Yield": 0.05,
+            "P/E Change": 0.03,
+            "P/B Change": 0.02,
+            "P/B Trend": 0.02,
+            "P/S Change": 0.02
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_18-10_Transportation": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current FCFF/Net Income": 0.2,
+            "Current LT Debt/Assets": 0.2,
+            "Current ROA": 0.15,
+            "Estimated ROA": 0.15,
+            "EPS CV Squared": 0.1,
+            "Current EBIT Margin": 0.05,
+            "Estimated EBIT Margin": 0.05,
+            "ROE Trend": 0.01,
+            "ROA Trend": 0.01,
+            "ROIC Change": 0.01,
+            "EBIT Margin Change": 0.01,
+            "CFO/Assets Change": 0.01,
+            "CFO/Assets Trend": 0.01,
+            "OCF/Net Income Change": 0.01,
+            "OCF/Net Income Trend": 0.01,
+            "FCFF/Net Income Change": 0.01,
+            "OCF/LT Debt Change": 0.01
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_18-10_Capital Goods": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Estimated ROE": 0.3,
+            "Current Net Debt/Assets": 0.2,
+            "EPS CV Squared": 0.1,
+            "Current Gross Margin": 0.1,
+            "Current OCF/Net Income": 0.07,
+            "Current FCFF/Net Income": 0.07,
+            "Current Accruals/Assets": 0.06,
+            "ROE Change": 0.01,
+            "ROE Trend": 0.01,
+            "ROA Trend": 0.01,
+            "ROIC Change": 0.01,
+            "GP/Assets Change": 0.01,
+            "GP/Assets Trend": 0.01,
+            "Gross Margin Change": 0.01,
+            "CFO/Assets Change": 0.01,
+            "OCF/LT Debt Change": 0.01,
+            "Net Debt/EBITDA Change": 0.01
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_18-10_Banks": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Past Efficiency Ratio": 0.45,
+            "Current Equity/Assets": 0.3,
+            "EPS CV Squared": 0.15,
+            "Net Interest Margin Change": 0.1
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Quality_FF_19-10": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Current ROE FF": 1.0
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "percentile",
+      "winsorization": false,
+      "winsor_mode": "quantile",
+      "method": "linear"
+    },
+    "Momentum_03-11": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "6-1m Total Return": 0.25,
+            "Estimated EPS Revision / Price": 0.25,
+            "Risk-Adjusted 6-1m Return": 0.08,
+            "Risk-Adjusted 12-1m Return": 0.07,
+            "Information Discreteness": 0.05,
+            "MACD 20/50 (SMA)": 0.05,
+            "Price / 52w High": 0.05,
+            "Turnover 60 Calendar Days": 0.05,
+            "Volume 20/60 Calendar Days": 0.05,
+            "Best Analyst Rating": 0.03,
+            "Net Buy Rec %": 0.03,
+            "Buy Rec %": 0.02,
+            "Sell Rec %": 0.02
+          },
+          "method": "linear"
+        }
+      },
+      "normalization": "normalized_zscore",
+      "winsorization": {
+        "lower": 0.05,
+        "upper": 0.95
+      },
+      "winsor_mode": "quantile",
+      "method": "softplus"
+    },
+    "Reversion_04-11": {
+      "nodes": {
+        "Scoring": {
+          "inputs": {
+            "Sell Rec % Change": 0.25,
+            "Price / 20d MA Reversal": 0.18,
+            "1m Return Reversal": 0.17,
+            "Turnover 60 Calendar Days": 0.08,
+            "Best Analyst Rating": 0.07,
+            "Volume 20/60 Calendar Days": 0.07,
+            "Net Buy Rec %": 0.06,
+            "Buy Rec %": 0.06,
+            "Sell Rec %": 0.06
           },
           "method": "linear"
         }

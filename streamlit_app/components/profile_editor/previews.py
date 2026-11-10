@@ -46,6 +46,7 @@ def render_previews(
     winsor_mode: str,
     key_prefix: str,  # kept for API compatibility
     method: str = "linear",
+    power_transform: str = "none",
 ) -> None:
     """Render Graph and JSON tabs."""
     tab1, tab2 = st.tabs(["Graph", "JSON"])
@@ -57,6 +58,12 @@ def render_previews(
             st.code(dot, language="dot")
     with tab2:
         payload = flat_to_export_payload(
-            nodes, root_id, normalization, winsorization, winsor_mode, method=method
+            nodes,
+            root_id,
+            normalization,
+            winsorization,
+            winsor_mode,
+            method=method,
+            power_transform=power_transform,
         )
         st.json(payload)

@@ -527,7 +527,7 @@
         "/"
       ],
       "higher_is_better": true,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Past FCFF/Net Income": {
       "metric_names": [
@@ -538,7 +538,7 @@
         "/"
       ],
       "higher_is_better": true,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Estimated FCFF/Net Income": {
       "metric_names": [
@@ -549,7 +549,7 @@
         "/"
       ],
       "higher_is_better": true,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "FCFF/Net Income Change": {
       "metric_names": [
@@ -744,7 +744,7 @@
         "/"
       ],
       "higher_is_better": false,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Current LT Debt/Assets": {
       "metric_names": [
@@ -755,7 +755,7 @@
         "/"
       ],
       "higher_is_better": false,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Past LT Debt/Assets": {
       "metric_names": [
@@ -766,7 +766,7 @@
         "/"
       ],
       "higher_is_better": false,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "LT Debt/Assets Change": {
       "metric_names": [
@@ -790,7 +790,7 @@
         "/"
       ],
       "higher_is_better": false,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Past Net Debt/Assets": {
       "metric_names": [
@@ -801,7 +801,7 @@
         "/"
       ],
       "higher_is_better": false,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Estimated Net Debt/Assets": {
       "metric_names": [
@@ -812,7 +812,7 @@
         "/"
       ],
       "higher_is_better": false,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Net Debt/Assets Change": {
       "metric_names": [
@@ -849,7 +849,7 @@
         "/"
       ],
       "higher_is_better": false,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Past Net Debt/OCF": {
       "metric_names": [
@@ -860,7 +860,7 @@
         "/"
       ],
       "higher_is_better": false,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Estimated Net Debt/OCF": {
       "metric_names": [
@@ -871,7 +871,7 @@
         "/"
       ],
       "higher_is_better": false,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Net Debt/OCF Change": {
       "metric_names": [
@@ -908,7 +908,7 @@
         "/"
       ],
       "higher_is_better": true,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Past OCF/LT Debt": {
       "metric_names": [
@@ -919,7 +919,7 @@
         "/"
       ],
       "higher_is_better": true,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "OCF/LT Debt Change": {
       "metric_names": [
@@ -943,7 +943,7 @@
         "/"
       ],
       "higher_is_better": true,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Past CFO/Assets": {
       "metric_names": [
@@ -954,7 +954,7 @@
         "/"
       ],
       "higher_is_better": true,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Estimated CFO/Assets": {
       "metric_names": [
@@ -965,7 +965,7 @@
         "/"
       ],
       "higher_is_better": true,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "CFO/Assets Change": {
       "metric_names": [
@@ -1002,7 +1002,7 @@
         "/"
       ],
       "higher_is_better": true,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Past OCF/Net Income": {
       "metric_names": [
@@ -1013,7 +1013,7 @@
         "/"
       ],
       "higher_is_better": true,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "Estimated OCF/Net Income": {
       "metric_names": [
@@ -1024,7 +1024,7 @@
         "/"
       ],
       "higher_is_better": true,
-      "na_handling": "replace_with_zero"
+      "na_handling": null
     },
     "OCF/Net Income Change": {
       "metric_names": [
@@ -1048,6 +1048,578 @@
       "operations": [
         "-",
         "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "EV/EBITDAR Change": {
+      "metric_names": [
+        "Current EV / EBITDAR",
+        "Past EV / EBITDAR",
+        "Past EV / EBITDAR"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "P/TBV Change": {
+      "metric_names": [
+        "Current Price to Tangible Book",
+        "Past Price to Tangible Book",
+        "Past Price to Tangible Book"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Net Interest Margin Change": {
+      "metric_names": [
+        "Current Net Interest Margin",
+        "Past Net Interest Margin",
+        "Past Net Interest Margin"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Current P/GP": {
+      "metric_names": [
+        "Current P/S Ratio",
+        "Current Gross Margin"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": null
+    },
+    "Estimated P/GP": {
+      "metric_names": [
+        "Estimated P/S Ratio",
+        "Estimated Gross Margin"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": null
+    },
+    "Growth / Estimated P/E": {
+      "metric_names": [
+        "Current LTG EPS",
+        "Estimated P/E Ratio"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "EPS CV Squared": {
+      "metric_names": [
+        "EPS Variability",
+        "Current EPS",
+        "EPS Variability",
+        "Current EPS"
+      ],
+      "operations": [
+        "/",
+        "*",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": null
+    },
+    "Current GP/Assets": {
+      "metric_names": [
+        "Current Gross Profit",
+        "Current Total Assets"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Estimated GP/Assets": {
+      "metric_names": [
+        "Estimated Gross Profit",
+        "Estimated Total Assets"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Past GP/Assets": {
+      "metric_names": [
+        "Past Gross Profit",
+        "Past Total Assets"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "GP/Assets Change": {
+      "metric_names": [
+        "Current GP/Assets",
+        "Past GP/Assets",
+        "Past GP/Assets"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "GP/Assets Trend": {
+      "metric_names": [
+        "Estimated GP/Assets",
+        "Current GP/Assets",
+        "Current GP/Assets"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Current Equity/Assets": {
+      "metric_names": [
+        "Current ROA",
+        "Current ROE"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Estimated Equity/Assets": {
+      "metric_names": [
+        "Estimated ROA",
+        "Estimated ROE"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Current NOA/Assets": {
+      "metric_names": [
+        "Current Net Operating Assets",
+        "Current Total Assets"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": null
+    },
+    "Current FCFF/Assets": {
+      "metric_names": [
+        "Free Cash Flow to the Firm",
+        "Current Total Assets"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Current Book to Market": {
+      "metric_names": [
+        "Current P/B Ratio",
+        "Current P/B Ratio",
+        "Current P/B Ratio"
+      ],
+      "operations": [
+        "/",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "eliminate"
+    },
+    "Current ROE FF": {
+      "metric_names": [
+        "Current ROE",
+        "Current ROE",
+        "Current ROE"
+      ],
+      "operations": [
+        "*",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "eliminate"
+    },
+    "Unit Helper": {
+      "metric_names": [
+        "Last Price",
+        "Last Price"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "1m Gross Return": {
+      "metric_names": [
+        "1m Total Return",
+        "Unit Helper"
+      ],
+      "operations": [
+        "+"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "12-1m Total Return": {
+      "metric_names": [
+        "12m Total Return",
+        "Unit Helper",
+        "1m Gross Return",
+        "Unit Helper"
+      ],
+      "operations": [
+        "+",
+        "/",
+        "-"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "6-1m Total Return": {
+      "metric_names": [
+        "6m Total Return",
+        "Unit Helper",
+        "1m Gross Return",
+        "Unit Helper"
+      ],
+      "operations": [
+        "+",
+        "/",
+        "-"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Risk-Adjusted 12-1m Return": {
+      "metric_names": [
+        "12-1m Total Return",
+        "Volatility 252 Calendar Days"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Price / 52w High": {
+      "metric_names": [
+        "Last Price",
+        "52w Max Price"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Price / 200d MA": {
+      "metric_names": [
+        "Last Price",
+        "200d Moving Average"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Price / 50d MA": {
+      "metric_names": [
+        "Last Price",
+        "50d Moving Average"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Buy Rec %": {
+      "metric_names": [
+        "Total Buy Rec",
+        "Total Analyst Rec"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Sell Rec %": {
+      "metric_names": [
+        "Total Sell Rec",
+        "Total Analyst Rec"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": null
+    },
+    "Net Buy Rec %": {
+      "metric_names": [
+        "Total Buy Rec",
+        "Total Sell Rec",
+        "Total Analyst Rec"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Turnover 60 Calendar Days": {
+      "metric_names": [
+        "Volume 60 Calendar Days",
+        "Last Price",
+        "Market Cap"
+      ],
+      "operations": [
+        "*",
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": null
+    },
+    "Volume 20/60 Calendar Days": {
+      "metric_names": [
+        "Volume 20 Calendar Days",
+        "Volume 60 Calendar Days"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "1m Return Reversal": {
+      "metric_names": [
+        "1m Total Return",
+        "Unit Helper"
+      ],
+      "operations": [
+        "*"
+      ],
+      "higher_is_better": false,
+      "na_handling": null
+    },
+    "RSI 14 Reversal": {
+      "metric_names": [
+        "RSI 14",
+        "Unit Helper"
+      ],
+      "operations": [
+        "*"
+      ],
+      "higher_is_better": false,
+      "na_handling": null
+    },
+    "Price / 20d MA Reversal": {
+      "metric_names": [
+        "Last Price",
+        "20d Moving Average"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": null
+    },
+    "MACD 20/50 (SMA)": {
+      "metric_names": [
+        "20d Moving Average",
+        "50d Moving Average",
+        "50d Moving Average"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "MACD 50/200 (SMA)": {
+      "metric_names": [
+        "50d Moving Average",
+        "200d Moving Average",
+        "200d Moving Average"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "6m Gross Return": {
+      "metric_names": [
+        "6m Total Return",
+        "Unit Helper"
+      ],
+      "operations": [
+        "+"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "12-6m Total Return": {
+      "metric_names": [
+        "12m Total Return",
+        "Unit Helper",
+        "6m Gross Return",
+        "Unit Helper"
+      ],
+      "operations": [
+        "+",
+        "/",
+        "-"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Risk-Adjusted 6-1m Return": {
+      "metric_names": [
+        "6-1m Total Return",
+        "Volatility 252 Calendar Days"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Estimated EPS Revision": {
+      "metric_names": [
+        "Estimated EPS",
+        "Past Estimated EPS",
+        "Past Estimated EPS"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Estimated EPS Revision / Price": {
+      "metric_names": [
+        "Estimated EPS",
+        "Past Estimated EPS",
+        "Last Price"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Past Buy Rec %": {
+      "metric_names": [
+        "Past Total Buy Rec",
+        "Past Total Analyst Rec"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Past Sell Rec %": {
+      "metric_names": [
+        "Past Total Sell Rec",
+        "Past Total Analyst Rec"
+      ],
+      "operations": [
+        "/"
+      ],
+      "higher_is_better": false,
+      "na_handling": null
+    },
+    "Past Net Buy Rec %": {
+      "metric_names": [
+        "Past Total Buy Rec",
+        "Past Total Sell Rec",
+        "Past Total Analyst Rec"
+      ],
+      "operations": [
+        "-",
+        "/"
+      ],
+      "higher_is_better": true,
+      "na_handling": null
+    },
+    "Buy Rec % Change": {
+      "metric_names": [
+        "Buy Rec %",
+        "Past Buy Rec %"
+      ],
+      "operations": [
+        "-"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Sell Rec % Change": {
+      "metric_names": [
+        "Sell Rec %",
+        "Past Sell Rec %"
+      ],
+      "operations": [
+        "-"
+      ],
+      "higher_is_better": false,
+      "na_handling": "replace_with_zero"
+    },
+    "Net Buy Rec % Change": {
+      "metric_names": [
+        "Net Buy Rec %",
+        "Past Net Buy Rec %"
+      ],
+      "operations": [
+        "-"
+      ],
+      "higher_is_better": true,
+      "na_handling": "replace_with_zero"
+    },
+    "Best Analyst Rating Change": {
+      "metric_names": [
+        "Best Analyst Rating",
+        "Past Best Analyst Rating"
+      ],
+      "operations": [
+        "-"
       ],
       "higher_is_better": true,
       "na_handling": "replace_with_zero"

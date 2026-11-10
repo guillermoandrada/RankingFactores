@@ -15,7 +15,7 @@ from typing import Iterable, Optional
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
-from sqlalchemy import MetaData, and_, func, select
+from sqlalchemy import MetaData, and_, literal, select
 from sqlalchemy.engine import Engine
 
 from modules.config.derived_metrics import DerivedMetricStore
@@ -23,6 +23,7 @@ from modules.domain.analytics.metric_loader import (
     compute_derived_series,
     resolve_metric_dependencies,
 )
+from modules.domain.analytics.security_groups import select_security_groups
 from modules.infrastructure.db import FinancialDatabase
 from modules.infrastructure.market_data.providers.base import BasePriceProvider
 from modules.infrastructure.market_data.providers.hybrid_provider import HybridPriceProvider
@@ -497,26 +498,14 @@ class ICAnalyzer:
 
     def _load_security_groups(self, *, period: str, group_by: str) -> pd.DataFrame:
         """Ticker -> sector/industry for a period: period classification first, then security."""
-        tbl_s = self._tbl_sec
-        tbl_c = self._metadata.tables["security_classification"]
-        if group_by == "sector":
-            tbl_label = self._metadata.tables["sectors"]
-            label_col = tbl_label.c.sector_name
-            join_label = tbl_label.c.sector_id == func.coalesce(tbl_c.c.sector_id, tbl_s.c.sector_id)
-        else:
-            tbl_label = self._metadata.tables["industries"]
-            label_col = tbl_label.c.industry_name
-            join_label = tbl_label.c.industry_id == func.coalesce(
-                tbl_c.c.industry_id, tbl_s.c.industry_id
-            )
-        q = (
-            select(tbl_s.c.ticker.label("ticker"), label_col.label("group"))
-            .select_from(tbl_s)
-            .outerjoin(tbl_c, and_(tbl_c.c.security_id == tbl_s.c.id, tbl_c.c.period == period))
-            .outerjoin(tbl_label, join_label)
-        )
+        universe = select(
+            literal(period).label("period"),
+            self._tbl_sec.c.id.label("security_id"),
+        ).subquery()
+        q = select_security_groups(self._metadata, universe, group_by=group_by)
         with self._engine.connect() as conn:
-            return pd.read_sql_query(q, con=conn).drop_duplicates("ticker")
+            groups = pd.read_sql_query(q, con=conn)
+        return groups[["ticker", "group"]].drop_duplicates("ticker")
 
     def _inter_factor_spearman_matrix(
         self,

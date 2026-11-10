@@ -192,6 +192,7 @@ never declared: **any input name that is not itself a node key is treated as a m
         "Quality": { "inputs": { "Current ROA": 0.5, "Current ROIC": 0.5 },                     "method": "linear" },
         "Scoring": { "inputs": { "Value": 0.4, "Quality": 0.6 },                                "method": "linear" }
       },
+      "power_transform": "none",
       "normalization": "zscore",
       "winsorization": { "lower": 0.01, "upper": 0.99 },
       "winsor_mode": "quantile",
@@ -204,6 +205,7 @@ never declared: **any input name that is not itself a node key is treated as a m
 | Field | Values | Default applied by [`normalize_profile()`](../modules/config/ranking_profiles.py#L48) |
 |---|---|---|
 | `nodes` | `{node_name: {inputs: {name: weight}, method?}}` | required, non-empty |
+| `power_transform` | `none` \| `yeo_johnson` | `"none"` — Yeo-Johnson runs first, before winsorization; λ is fitted per metric and period on the 0.5–99.5 % body |
 | `normalization` | `zscore` \| `normalized_zscore` \| `percentile` | `"zscore"` |
 | `winsorization` | `false` \| `{lower, upper}` \| `{k}` | `false` |
 | `winsor_mode` | `quantile` \| `semi` | `"quantile"` |
@@ -358,8 +360,9 @@ tree into the execution shape:
 - `layers` — nodes with at least one node input, in topological order. If the tree has none, a
   synthetic `{"name": "score", "weights": {<last factor>: 1.0}}` layer is appended.
 - `metric_transforms` — the chain built by
-  [`_profile_to_transform_chain()`](../modules/config/ranking_profiles.py#L15): the winsor step (if
-  any) followed by the terminal normalisation.
+  [`_profile_to_transform_chain()`](../modules/config/ranking_profiles.py#L15): the Yeo-Johnson
+  step (if `power_transform` is `yeo_johnson`), then the winsor step (if any), then the terminal
+  normalisation.
 
 **2 — Collect metric names.**
 [`get_metric_names_from_profile()`](../api/services/ranking_service.py#L11) takes the union of all
@@ -380,7 +383,10 @@ An empty result set raises `ValueError("No data found for the given period, metr
 **4 — Transform each metric.**
 [`ZScoreCalculator.compute()`](../modules/domain/analytics/zscore.py#L41) applies the chain per
 column, producing `<metric>_zscore`. When winsorization is on it also keeps `<metric>_winsor`; when
-it is off it keeps the raw value column for display. A metric that is entirely missing for the scope
+it is off it keeps the raw value column for display. `<metric>_winsor` applies only the winsor step
+to the raw value, so it stays in the metric's own units even with Yeo-Johnson on; the score itself
+is still winsorized in the transformed space, so with semi winsorization the displayed clip bounds
+can differ from the ones the score used. A metric that is entirely missing for the scope
 is set to `0.0` and appended to `warnings` rather than raising.
 
 **5 — Combine, bottom-up.**

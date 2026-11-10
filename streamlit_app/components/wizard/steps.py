@@ -17,6 +17,12 @@ _TERMINAL_OPTIONS = [
 
 def render_transforms(key_prefix: str, title: str = "Transform Chain") -> list[dict[str, Any]]:
     st.subheader(title)
+    use_yeo_johnson = st.checkbox(
+        "Use Yeo-Johnson power transform",
+        value=False,
+        key=f"{key_prefix}_use_yeo_johnson",
+        help="Reduces skew before winsorization; lambda is fitted per metric and period.",
+    )
     use_winsor = st.checkbox(
         "Use winsorization",
         value=True,
@@ -82,6 +88,8 @@ def render_transforms(key_prefix: str, title: str = "Transform Chain") -> list[d
     terminal = terminal_values[terminal_labels.index(terminal_choice)]
 
     chain: list[dict[str, Any]] = []
+    if use_yeo_johnson:
+        chain.append({"name": "yeo_johnson", "params": {}})
     if use_winsor:
         if winsor_mode == "quantile":
             chain.append({"name": "winsor", "params": {"lower": float(lower), "upper": float(upper)}})
@@ -90,6 +98,8 @@ def render_transforms(key_prefix: str, title: str = "Transform Chain") -> list[d
     chain.append({"name": terminal, "params": {}})
 
     summary_parts = []
+    if use_yeo_johnson:
+        summary_parts.append("Yeo-Johnson")
     if use_winsor:
         if winsor_mode == "quantile":
             summary_parts.append(f"Winsor ({lower:.2f}–{upper:.2f})")
@@ -350,15 +360,21 @@ def _convert_factors_layers_to_nodes(
     return nodes
 
 
-def _transforms_to_normalization_winsor(transforms: list[dict[str, Any]]) -> tuple[str, Any, str]:
-    """Extract normalization, winsorization, and winsor_mode from transform chain."""
+def _transforms_to_normalization_winsor(
+    transforms: list[dict[str, Any]],
+) -> tuple[str, Any, str, str]:
+    """Extract normalization, winsorization, winsor_mode, and power_transform
+    from transform chain."""
+    power_transform = "none"
     normalization = "zscore"
     winsorization: Any = False
     winsor_mode = "quantile"
     for step in transforms:
         name = step.get("name", "")
         params = step.get("params") or {}
-        if name == "winsor":
+        if name == "yeo_johnson":
+            power_transform = "yeo_johnson"
+        elif name == "winsor":
             winsor_mode = "quantile"
             winsorization = {"lower": params.get("lower", 0.01), "upper": params.get("upper", 0.99)}
         elif name == "semi_winsor":
@@ -366,7 +382,7 @@ def _transforms_to_normalization_winsor(transforms: list[dict[str, Any]]) -> tup
             winsorization = {"k": params.get("k", 3.0)}
         elif name in ("zscore", "normalized_zscore", "percentile"):
             normalization = name
-    return normalization, winsorization, winsor_mode
+    return normalization, winsorization, winsor_mode, power_transform
 
 
 def convert_wizard_to_profile(
@@ -374,14 +390,15 @@ def convert_wizard_to_profile(
     transforms: list[dict[str, Any]] | None = None,
     method: str = "linear",
 ) -> dict[str, Any]:
-    """Convert wizard output to the profile schema (nodes, normalization,
-    winsorization, winsor_mode, method)."""
+    """Convert wizard output to the profile schema (nodes, power_transform,
+    normalization, winsorization, winsor_mode, method)."""
     factors = base.get("factors", [])
     layers = base.get("layers", [])
     nodes = _convert_factors_layers_to_nodes(factors, layers)
     if not nodes:
         return {
             "nodes": {},
+            "power_transform": "none",
             "normalization": "zscore",
             "winsorization": {"lower": 0.01, "upper": 0.99},
             "winsor_mode": "quantile",
@@ -389,11 +406,15 @@ def convert_wizard_to_profile(
         }
 
     normalization, winsorization, winsor_mode = "zscore", {"lower": 0.01, "upper": 0.99}, "quantile"
+    power_transform = "none"
     if transforms:
-        normalization, winsorization, winsor_mode = _transforms_to_normalization_winsor(transforms)
+        normalization, winsorization, winsor_mode, power_transform = _transforms_to_normalization_winsor(
+            transforms
+        )
 
     return {
         "nodes": nodes,
+        "power_transform": power_transform,
         "normalization": normalization,
         "winsorization": winsorization,
         "winsor_mode": winsor_mode,

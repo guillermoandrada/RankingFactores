@@ -376,7 +376,7 @@ def _fetch_fundamentals(
         SELECT
             fv.security_id,
             s.ticker,
-            s.long_name,
+            COALESCE(s.long_name, s.ticker) AS long_name,
             m.metric_name AS metric_name,
             m.higher_is_better AS higher_is_better,
             fv.value

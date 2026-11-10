@@ -65,11 +65,13 @@ class ZScoreCalculator:
         chain = transform_chain or DEFAULT_TRANSFORM_CHAIN
         # Treat both quantile winsor ("winsor") and semi-winsor ("semi_winsor")
         # as winsorization steps for preview/output purposes.
+        # The display column keeps only the winsor steps, so it stays in the metric's
+        # own units even when a power transform (Yeo-Johnson) precedes them.
         winsor_names = {"winsor", "semi_winsor"}
-        use_winsor = any(
-            str(s.get("name", "")).strip() in winsor_names
-            for s in chain
-        )
+        winsor_chain = [
+            s for s in chain if str(s.get("name", "")).strip() in winsor_names
+        ]
+        use_winsor = bool(winsor_chain)
         result = df_wide.copy()
         warnings: list[str] = []
         missing_metrics = set(df_wide.attrs.get("missing_metrics", []))
@@ -88,9 +90,7 @@ class ZScoreCalculator:
                 result[f"{col}{out_suffix}"] = 0.0
                 continue
             if use_winsor:
-                result[f"{col}_winsor"] = self._transforms.apply_chain(
-                    result[col], chain, stop_before=["zscore", "normalized_zscore", "percentile"]
-                )
+                result[f"{col}_winsor"] = self._transforms.apply_chain(result[col], winsor_chain)
             result[f"{col}{out_suffix}"] = self._transforms.apply_chain(result[col], chain)
         # Keep profile metrics and their transforms. When winsor on: _winsor + _zscore.
         # When winsor off: raw value (for display) + _zscore, so metrics flow into the ranking table.

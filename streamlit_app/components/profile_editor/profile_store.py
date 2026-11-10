@@ -86,9 +86,11 @@ def flat_to_export_payload(
     winsorization: Any,
     winsor_mode: str = "quantile",
     method: str = "linear",
+    power_transform: str = "none",
 ) -> dict[str, Any]:
     """Convert flat store back to API payload (nodes dict with inputs plus
-    profile-level normalization, winsorization, and aggregation method)."""
+    profile-level power transform, normalization, winsorization, and
+    aggregation method)."""
     export_nodes: dict[str, Any] = {}
 
     def to_inputs(node: Node) -> dict[str, float]:
@@ -110,6 +112,7 @@ def flat_to_export_payload(
 
     return {
         "nodes": export_nodes,
+        "power_transform": power_transform,
         "normalization": normalization,
         "winsorization": winsorization,
         "winsor_mode": winsor_mode,

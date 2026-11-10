@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -14,7 +14,16 @@ import api.routers.scorings as scorings_router
 from api.services.ranking_service import _apply_display_labels
 from modules.domain.analytics.ranking import RankingEngine
 from modules.domain.analytics.transforms import build_default_transform_registry
-from modules.config.ranking_profiles import RankingProfileResolver, RankingProfileStore
+from modules.config.ranking_profiles import (
+    RankingProfileResolver,
+    RankingProfileStore,
+    normalize_profile,
+)
+from streamlit_app.components.profile_editor.profile_store import (
+    ProfileStore,
+    flat_to_export_payload,
+)
+from streamlit_app.components.wizard.steps import convert_wizard_to_profile
 
 
 def test_profile_precedence(tmp_path: Path) -> None:
@@ -50,6 +59,72 @@ def test_transform_chain_handles_na() -> None:
     assert len(out) == 4
     assert not out.isna().any()
 
+
+def test_yeo_johnson_reduces_skew_and_keeps_na() -> None:
+    registry = build_default_transform_registry()
+    series = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0, None, 500.0])
+    out = registry.get("yeo_johnson").apply(series)
+    assert out.isna().tolist() == series.isna().tolist()
+    assert out.skew() < series.skew()
+    assert out.rank().equals(series.rank())
+
+
+def test_power_transform_profile_prepends_yeo_johnson(tmp_path: Path) -> None:
+    profile_data = {
+        "profiles": {
+            "yj": {
+                "nodes": {"score": {"inputs": {"M1": 1.0}}},
+                "power_transform": "yeo_johnson",
+                "winsorization": {"lower": 0.05, "upper": 0.95},
+                "normalization": "zscore",
+            }
+        }
+    }
+    config_path = tmp_path / "profiles.json"
+    config_path.write_text(json.dumps(profile_data), encoding="utf-8")
+    resolved = RankingProfileResolver(RankingProfileStore(path=config_path)).resolve("yj")
+    names = [step["name"] for step in resolved["metric_transforms"]]
+    assert names == ["yeo_johnson", "winsor", "zscore"]
+
+
+
+def test_normalize_profile_defaults_power_transform_to_none() -> None:
+    assert normalize_profile({"nodes": {}})["power_transform"] == "none"
+    assert normalize_profile({"nodes": {}, "power_transform": "yeo_johnson"})["power_transform"] == "yeo_johnson"
+
+
+def test_profile_editor_export_keeps_power_transform() -> None:
+    store = ProfileStore()
+    store.load_from_profile({"nodes": {"Scoring": {"inputs": {"M1": 1.0}}}})
+
+    payload = flat_to_export_payload(
+        store.get_nodes(),
+        store.get_root_id(),
+        "zscore",
+        {"lower": 0.01, "upper": 0.99},
+        "quantile",
+        power_transform="yeo_johnson",
+    )
+
+    assert payload["power_transform"] == "yeo_johnson"
+
+
+def test_wizard_transform_chain_round_trips_power_transform() -> None:
+    base = {
+        "factors": [{"name": "Scoring", "method": "linear", "weights": {"M1": 1.0}}],
+        "layers": [{"name": "score", "method": "linear", "weights": {"Scoring": 1.0}}],
+    }
+    chain = [
+        {"name": "yeo_johnson", "params": {}},
+        {"name": "winsor", "params": {"lower": 0.05, "upper": 0.95}},
+        {"name": "zscore", "params": {}},
+    ]
+
+    profile = convert_wizard_to_profile(base, transforms=chain)
+
+    assert profile["power_transform"] == "yeo_johnson"
+    assert profile["winsorization"] == {"lower": 0.05, "upper": 0.95}
+    assert convert_wizard_to_profile(base, transforms=chain[1:])["power_transform"] == "none"
 
 def test_combiner_methods() -> None:
     df = pd.DataFrame(

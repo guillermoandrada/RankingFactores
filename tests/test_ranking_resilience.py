@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import pandas as pd
 
@@ -101,3 +101,31 @@ def test_missing_metric_tracking_does_not_zero_valid_derived_metric(tmp_path) ->
         "Past Debt/Assets" in warning
         for warning in result.attrs.get("warnings", [])
     )
+
+
+def test_winsor_display_column_stays_in_metric_units_with_yeo_johnson(tmp_path) -> None:
+    db = FinancialDatabase(db_url=f"sqlite:///{tmp_path / 'yeo_johnson_display.db'}")
+    roa = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 500.0]
+    tickers = [f"T{i}" for i in range(len(roa))]
+    df = pd.DataFrame(
+        {
+            "Ticker": tickers,
+            "Long Name": tickers,
+            "GICS Sector Name": ["Tech"] * len(roa),
+            "GICS Industry Group Name": ["Software"] * len(roa),
+            "Market Cap (USD)": [1000.0] * len(roa),
+            "Current ROA": roa,
+        }
+    )
+    db.save_fundamentals(df, "2024 Q1", mode="replace")
+    chain = [
+        {"name": "yeo_johnson", "params": {}},
+        {"name": "winsor", "params": {"lower": 0.0, "upper": 1.0}},
+        {"name": "zscore", "params": {}},
+    ]
+
+    result, _ = ZScoreCalculator(engine=db.engine).compute(
+        period="2024 Q1", metric_names=["Current ROA"], transform_chain=chain
+    )
+
+    assert sorted(result["Current ROA_winsor"].tolist()) == roa
